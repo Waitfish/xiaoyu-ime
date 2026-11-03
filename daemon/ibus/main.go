@@ -584,14 +584,25 @@ func xkbEngineName(ibusConn *dbus.Conn, layout string) string {
 		return ""
 	}
 	prefix := "xkb:" + layout + ":"
+	exact := "" // xkb:<layout>::（空变体 = 标准布局）优先，避免 intl 等变体改变按键行为
+	first := ""
 	for _, e := range engines {
 		if desc, ok := e.([]interface{}); ok && len(desc) > 2 {
 			if n, ok := desc[2].(string); ok && strings.HasPrefix(n, prefix) {
-				return n
+				if n == prefix+":" {
+					exact = n
+					break
+				}
+				if first == "" {
+					first = n
+				}
 			}
 		}
 	}
-	return ""
+	if exact != "" {
+		return exact
+	}
+	return first
 }
 
 func globalEngineName(ibusConn *dbus.Conn) string {
