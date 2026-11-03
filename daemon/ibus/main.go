@@ -328,6 +328,16 @@ func (e *engineObj) update(resp keyResponse) {
 }
 
 func (e *engineObj) ProcessKeyEvent(keyval, keycode, state uint32) (bool, *dbus.Error) {
+	// 状态栏（gsettings）是英文键盘时，即使 GNOME 没把引擎从上下文摘掉，
+	// 按键也直通——保证"指示显示什么，打出来就是什么"。
+	if b, _ := cachedSource(); b == "xkb" {
+		if e.cl.sess != 0 {
+			_, _ = e.cl.call(map[string]any{"op": "reset", "session": e.cl.sess})
+			e.emit("UpdatePreeditText", ibusText(""), uint32(0), false, uint32(0))
+			e.emit("UpdateLookupTable", lookupTable(5, 0, []string{}, []string{}), false)
+		}
+		return false, nil
+	}
 	if err := e.cl.open(); err != nil {
 		log.Println("open:", err)
 		return false, nil // 引擎未就绪：直通英文，下次按键再试
@@ -553,6 +563,25 @@ func flattenStrings(v interface{}) []string {
 	return out
 }
 
+// GNOME 当前输入源缓存：对账器每次对账后更新，按键路径只读缓存（不 spawn）。
+var (
+	srcMu   sync.Mutex
+	srcBack string
+	srcID   string
+)
+
+func setCachedSource(b, id string) {
+	srcMu.Lock()
+	srcBack, srcID = b, id
+	srcMu.Unlock()
+}
+
+func cachedSource() (string, string) {
+	srcMu.Lock()
+	defer srcMu.Unlock()
+	return srcBack, srcID
+}
+
 // currentSource 解析 gsettings input-sources，返回当前激活源 (backend, id)。
 func currentSource() (string, string) {
 	out, err := exec.Command("gsettings", "get", "org.gnome.desktop.input-sources", "sources").Output()
@@ -622,6 +651,7 @@ func globalEngineName(ibusConn *dbus.Conn) string {
 
 func reconcile(sbus, ibusConn *dbus.Conn) {
 	backend, id := currentSource()
+	setCachedSource(backend, id)
 	if backend == "" {
 		return
 	}
