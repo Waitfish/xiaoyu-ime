@@ -37,5 +37,9 @@ macOS 本地编译 daemon：`PKG_CONFIG_PATH=/opt/homebrew/opt/librime/lib/pkgco
 
 ## 里程碑状态
 
-M1 fcitx5 模块内嵌 librime：**CI 编译通过**（24.04+26.04，run 41574303589）；真机运行验证待做
-→ M2 Go 守护进程 + socket 转发 → M3 MyGo 候选窗/设置 → M4 PPA。
+M1 fcitx5 模块（真机打字验证通过，26.04 arm64）
+M2 Go 守护进程：**已上线**——模块纯转发（不再链接 librime），socket `$XDG_RUNTIME_DIR/tomato-ime.sock`，
+   协议换行 JSON：`{"op":"open|close|reset|key",...}`；模块连接失败自动 fork/exec `/usr/libexec/tomato-ime-daemon`；
+   daemon 独占 librime，全局 mutex 串行（librime 非线程安全）；协议字段小写（Go 侧必须加 json tag）。
+→ M3 MyGo 候选窗/设置程序 → M4 PPA。
+注意：进程名 tomato-ime-daemon 超 15 字符，pkill -x 匹配不到，用 `pkill -f "^/usr/libexec/tomato-ime-daemon$"`。
