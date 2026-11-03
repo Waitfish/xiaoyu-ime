@@ -163,6 +163,19 @@ private:
 
 class TomatoEngine : public fcitx::InputMethodEngineV2 {
 public:
+    // fcitx5 的 IM 条目由引擎自己声明（inputmethod/*.conf 不是条目来源）。
+    // 缺了这个 listInputMethods 返回空 → 条目不存在 → 切不到番茄 → 英文直通。
+    std::vector<fcitx::InputMethodEntry> listInputMethods() override {
+        std::vector<fcitx::InputMethodEntry> entries;
+        entries.emplace_back("tomato", "番茄输入法", "zh_CN", "tomato");
+        auto &entry = entries.back();
+        entry.setNativeName("番茄输入法");
+        entry.setIcon("tomato-input-method");
+        entry.setLabel("番");
+        entry.setConfigurable(false);
+        return entries;
+    }
+
     void activate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override {
         if (!client_.ensureConnected())
             return;
