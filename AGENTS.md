@@ -60,9 +60,13 @@ macOS 本地编译 daemon：`PKG_CONFIG_PATH=/opt/homebrew/opt/librime/lib/pkgco
 - 方案列表用 `default.custom.yaml`（patch）写进 rime 用户目录——**不能**用精简 default.yaml
   （方案 `__include default:/key_binder` 会失败）。
 - 小鹤双拼=rime 官方 `double_pinyin_flypy`（apt `rime-data-double-pinyin`）；五笔 `rime-data-wubi`。
-- **librime select_schema 对当前默认(schema_list 第一项)方案返回 false 且把会话弄成无活动方案**——默认方案跳过 select。
+- **RimeSessionId 是 uintptr_t（64 位指针）**——Go 里必须用 uint64 存！uint32 截断后
+  GetSession 找不到会话：process_key/select_schema 全 false，表现为"部分会话打字全英文"，
+  好坏随内存地址随机，极难归因（历史上"首会话必坏/默认方案 select 失败"全是它的假象）。
+- **librime 在 user.yaml 持久化 previously_selected_schema**：每个新会话必须无条件
+  select_schema（含默认方案），否则会话停在上次持久化的方案（拼音出五笔乱码候选）。
 - 简繁选项名因方案而异：luna_pinyin_simp=`zh_simp`，luna/double_pinyin=`simplification`——两个都设。
-- **librime 首会话必坏**：setup 后创建的第一个会话永远 process_key=false（schema 惰性初始化被它吸收）。
+- daemon 启动后建一个牺牲会话预热（key+applyConfig+destroy），吸收首会话惰性并把 user.yaml 方案落到配置值。
   daemon 启动后先建一个牺牲会话（key+destroy），真实会话从第二个起正常。
 - daemon 单例必须 flock（stat+dial 有竞态：双实例互抢 socket → 双 librime 共目录 → 部署损坏全直通）。
 - 引擎启动即 spawnDaemon 预热 + open() 重试 ~10s：否则用户切换输入法后头几秒按键全直通英文。
