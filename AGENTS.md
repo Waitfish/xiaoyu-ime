@@ -25,6 +25,14 @@ macOS 本地编译 daemon：`PKG_CONFIG_PATH=/opt/homebrew/opt/librime/lib/pkgco
   （jammy 5.0.x 是旧 API，如要支持需单独兼容分支，暂不做。）
 - librime ≥1.9：`process_key(session, keycode, mask)` 3 参；无 `clear_session`（用 `clear_composition`）；
   头文件不再导出修饰掩码枚举（X11 值本地定义：Shift=1, Ctrl=4, Mod1=8）。
+- **librime traits 大坑**：`api->setup()` 不填 `data_size`（只声明模块依赖+日志）；
+  `data_size` 为 0/垃圾时 librime 按旧版结构**忽略全部字段**（用户目录会退化成 cwd）。
+  必须手动 `traits.data_size = sizeof(traits)`（C++ 和 Go 都要）。
+- **librime 会把缺 `config_version` 字段的用户配置移进 `trash/`**——写 default.yaml 必须带 `config_version: "1.0"`。
+- **fcitx5 addon conf 正确写法**（5.1.19 实测）：`Type=SharedLibrary` + `Library=libtomato-ime`
+  （`Type=IMEngine`/`Library=export:libXXX` 是错误写法，会 "Could not load addon"）。
+- 首次运行模块自动写 `~/.local/share/tomato-ime/rime/default.yaml` 默认简体 `luna_pinyin_simp`
+  （luna_pinyin 默认输出繁体）。
 - C++ 必须 `-std=c++20`（fcitx5 5.1 头文件用 std::span/starts_with）。
 
 ## 里程碑状态
