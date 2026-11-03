@@ -55,6 +55,7 @@ type client struct {
 	enc *json.Encoder
 	dec *json.Decoder
 	sess uint32
+	lastOpenTry time.Time
 }
 
 func daemonSocket() string {
@@ -122,7 +123,9 @@ func (cl *client) call(req map[string]any) (keyResponse, error) {
 	return resp, nil
 }
 
-// open 懒创建会话（daemon 未就绪时下次按键再试；连接断开后自动重建）。
+// open 懒创建会话：单次尝试、绝不阻塞（ibus-libpinyin 同款策略）。
+// 旧版每次按键内部重试 9.6 秒，部署期把 ProcessKeyEvent 卡到 shell 超时，
+// shell 从此不再路由按键给引擎——表现为开机后一直英文，切输入法才恢复。
 func (cl *client) open() error {
 	if cl.sess != 0 && cl.c != nil {
 		return nil
@@ -130,26 +133,22 @@ func (cl *client) open() error {
 	if err := cl.ensure(); err != nil {
 		return err
 	}
-	// daemon 刚被拉起时 rime 可能未就绪/正在部署，短暂重试
-	var lastErr error
-	for i := 0; i < 24; i++ { // 冷部署最长约 8 秒
-		resp, err := cl.call(map[string]any{"op": "open"})
-		if err == nil && resp.Error == "" {
-			cl.sess = resp.Session
-			return nil
-		}
-		if err != nil {
-			lastErr = err
-			if err := cl.ensure(); err != nil {
-				return err
-			}
-		} else {
-			lastErr = errors.New(resp.Error)
-		}
-		time.Sleep(400 * time.Millisecond)
+	if time.Since(cl.lastOpenTry) < 300*time.Millisecond {
+		return fmt.Errorf("waiting for rime deploy")
 	}
-	return lastErr
+	cl.lastOpenTry = time.Now()
+	resp, err := cl.call(map[string]any{"op": "open"})
+	if err != nil {
+		_ = cl.ensure() // 连接断了重建，下次按键再试
+		return err
+	}
+	if resp.Error != "" {
+		return errors.New(resp.Error)
+	}
+	cl.sess = resp.Session
+	return nil
 }
+
 
 // ---------- IBus 序列化（字段顺序 = ibus 1.5.34 serialize 源码） ----------
 // godbus 把 Go struct 按字段顺序编码为 D-Bus 元组（[]interface{} 会编成 av，不可用）。
