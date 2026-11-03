@@ -5,12 +5,15 @@
 override_dh_auto_build-arch:
 	dh_auto_build
 	cd daemon && go build -buildvcs=false -o xiaoyu-ime-daemon .
+	cd daemon && go build -buildvcs=false -o xiaoyu-ime-ibus ./ibus
 	cd uiapp && GOTOOLCHAIN=auto GOPROXY=https://goproxy.cn,direct go build -mod=vendor -buildvcs=false -o xiaoyu-ime-ui .
 
 override_dh_auto_install-arch:
 	dh_auto_install
-	install -D daemon/xiaoyu-ime-daemon debian/xiaoyu-ime-fcitx5/usr/libexec/xiaoyu-ime-daemon
-	install -D uiapp/xiaoyu-ime-ui debian/xiaoyu-ime-fcitx5/usr/libexec/xiaoyu-ime-ui
+	install -D daemon/xiaoyu-ime-daemon debian/xiaoyu-ime/usr/libexec/xiaoyu-ime-daemon
+	install -D daemon/xiaoyu-ime-ibus debian/xiaoyu-ime/usr/libexec/xiaoyu-ime-ibus
+	install -D uiapp/xiaoyu-ime-ui debian/xiaoyu-ime/usr/libexec/xiaoyu-ime-ui
+	install -D data/ibus/xiaoyu.xml debian/xiaoyu-ime/usr/share/ibus/component/xiaoyu.xml
 
 # dwz 处理不了 Go 的 DWARF
 override_dh_dwz:

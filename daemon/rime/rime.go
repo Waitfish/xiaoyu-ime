@@ -21,6 +21,12 @@ static Bool tr_select_candidate(RimeApi* a, RimeSessionId s, size_t i) {
 static Bool tr_process_key(RimeApi* a, RimeSessionId s, int k, int m) {
 	return a->process_key(s, k, m);
 }
+static Bool tr_select_schema(RimeApi* a, RimeSessionId s, const char* id) {
+	return a->select_schema(s, id);
+}
+static void tr_set_option(RimeApi* a, RimeSessionId s, const char* n, Bool v) {
+	a->set_option(s, n, v);
+}
 static Bool tr_get_commit(RimeApi* a, RimeSessionId s, RimeCommit* c) { return a->get_commit(s, c); }
 static void tr_free_commit(RimeApi* a, RimeCommit* c) { a->free_commit(c); }
 static void tr_get_context(RimeApi* a, RimeSessionId s, RimeContext* c) { a->get_context(s, c); }
@@ -94,6 +100,24 @@ func (a *Api) SelectCandidate(sid uint32, index int) bool {
 // ProcessKey 送入一个 X keysym + Rime 修饰掩码，返回是否被引擎消费。
 func (a *Api) ProcessKey(sid uint32, keysym int, mods uint) bool {
 	return C.tr_process_key(a.p, C.RimeSessionId(sid), C.int(keysym), C.int(mods)) == C.True
+}
+
+// SelectSchema 切换输入方案（须已在 schema_list 中）。
+func (a *Api) SelectSchema(sid uint32, id string) bool {
+	c := C.CString(id)
+	defer C.free(unsafe.Pointer(c))
+	return C.tr_select_schema(a.p, C.RimeSessionId(sid), c) == C.True
+}
+
+// SetOption 设置会话选项（ascii_mode / full_shape / simplification 等）。
+func (a *Api) SetOption(sid uint32, name string, value bool) {
+	c := C.CString(name)
+	defer C.free(unsafe.Pointer(c))
+	v := C.False
+	if value {
+		v = C.True
+	}
+	C.tr_set_option(a.p, C.RimeSessionId(sid), c, v)
 }
 
 func (a *Api) CommitText(sid uint32) string {

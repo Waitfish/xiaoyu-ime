@@ -1,3 +1,4 @@
 fcitx5-module/build/
 daemon/xiaoyu-ime-daemon
+daemon/xiaoyu-ime-ibus
 *.log

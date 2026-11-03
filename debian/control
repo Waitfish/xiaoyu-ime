@@ -7,11 +7,15 @@ Build-Depends: debhelper-compat (= 13), cmake, pkg-config, fcitx5-modules-dev,
 Standards-Version: 4.6.2
 Rules-Requires-Root: no
 
-Package: xiaoyu-ime-fcitx5
+Package: xiaoyu-ime
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, rime-data-luna-pinyin, rime-prelude, rime-essay,
- libgtk-3-0t64 | libgtk-3-0
-Description: 小鱼输入法（fcitx5 模块 + librime 引擎守护进程）
-  fcitx5 前端模块 + xiaoyu-ime-daemon 引擎守护进程（Go + librime），
-  默认小鱼拼音简体（luna_pinyin_simp）方案。
-  安装后在 fcitx5 中添加「小鱼」输入法即可使用。
+Depends: ${shlibs:Depends}, ${misc:Depends}, rime-data-luna-pinyin, rime-data-double-pinyin,
+ rime-data-wubi, rime-prelude, rime-essay, libgtk-3-0t64 | libgtk-3-0
+Recommends: ibus
+Description: 小鱼输入法（IBus 引擎 + fcitx5 模块 + librime 引擎守护进程）
+  xiaoyu-ime-daemon 引擎守护进程（Go + librime）+ 两个前端：
+  IBus 引擎（xiaoyu-ime-ibus，GNOME/Ubuntu 原生路径）与 fcitx5 模块。
+  输入方案可配置：全拼（luna_pinyin_simp）、双拼-小鹤（double_pinyin_flypy）、五笔（wubi86）；
+  默认输入状态（中英文/简繁体/全半角）见 ~/.config/xiaoyu-ime/config.json。
+  IBus 环境（GNOME）：设置 → 输入法 中添加「小鱼输入法」；
+  fcitx5 环境：添加「小鱼」输入法。

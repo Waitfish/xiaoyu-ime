@@ -78,7 +78,7 @@ func socketPath() string {
 	return filepath.Join(dir, "xiaoyu-ime.sock")
 }
 
-// ensureUserConfig 首次运行写入默认简体方案。
+// ensureUserConfig 首次运行写入默认方案列表（全拼/小鹤双拼/五笔）。
 // 注意 librime 会把缺 config_version 的用户配置移进 trash/。
 func ensureUserConfig(dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -88,7 +88,58 @@ func ensureUserConfig(dir string) error {
 	if _, err := os.Stat(p); err == nil {
 		return nil
 	}
-	return os.WriteFile(p, []byte("config_version: \"1.0\"\nschema_list:\n  - schema: luna_pinyin_simp\n"), 0o600)
+	return os.WriteFile(p, []byte("config_version: \"1.0\"\nschema_list:\n  - schema: luna_pinyin_simp\n  - schema: double_pinyin_flypy\n  - schema: wubi86\n"), 0o600)
+}
+
+// config 应用级配置（~/.config/xiaoyu-ime/config.json）：
+// 输入方案 + 默认输入状态。设置程序（后续）写它，daemon 每次 open 会话时应用。
+type config struct {
+	Schema         string `json:"schema"`          // luna_pinyin_simp | double_pinyin_flypy | wubi86
+	AsciiMode      *bool  `json:"ascii_mode"`      // 默认中文(false)
+	Simplification *bool  `json:"simplification"`  // 默认简体(true)
+	FullShape      *bool  `json:"full_shape"`      // 默认半角(false)
+}
+
+var allowedSchemas = map[string]bool{
+	"luna_pinyin_simp":   true, // 全拼（简体）
+	"double_pinyin_flypy": true, // 双拼-小鹤
+	"wubi86":             true, // 五笔 86
+}
+
+func loadConfig() config {
+	cfg := config{Schema: "luna_pinyin_simp"}
+	home, err := os.UserHomeDir()
+	if err == nil {
+		if b, err := os.ReadFile(filepath.Join(home, ".config", "xiaoyu-ime", "config.json")); err == nil {
+			_ = json.Unmarshal(b, &cfg)
+		}
+	}
+	if !allowedSchemas[cfg.Schema] {
+		cfg.Schema = "luna_pinyin_simp"
+	}
+	return cfg
+}
+
+// applyConfig 在新会话上应用方案与默认状态。必须在持有 e.mu 时调用。
+func (e *engine) applyConfig(sid uint32) {
+	if !e.api.SelectSchema(sid, e.cfg.Schema) {
+		fmt.Fprintln(os.Stderr, "select_schema failed:", e.cfg.Schema)
+	}
+	ascii := false
+	if e.cfg.AsciiMode != nil {
+		ascii = *e.cfg.AsciiMode
+	}
+	e.api.SetOption(sid, "ascii_mode", ascii)
+	simp := true
+	if e.cfg.Simplification != nil {
+		simp = *e.cfg.Simplification
+	}
+	e.api.SetOption(sid, "simplification", simp)
+	full := false
+	if e.cfg.FullShape != nil {
+		full = *e.cfg.FullShape
+	}
+	e.api.SetOption(sid, "full_shape", full)
 }
 
 // engine 串行化全部 librime 调用（librime 全局状态非线程安全）。
@@ -96,6 +147,7 @@ type engine struct {
 	mu       sync.Mutex
 	api      *rime.Api
 	ready    bool // rime 初始化完成（listen 先于 setup，open 在就绪前返回错误）
+	cfg      config
 	sessions map[uint32]uint32 // proto id -> rime session
 	cursors  map[uint32]cursor
 	nextID   uint32
@@ -154,6 +206,7 @@ func (e *engine) handle(req *request, conn net.Conn) response {
 		}
 		e.nextID++
 		e.sessions[e.nextID] = sid
+		e.applyConfig(sid)
 		return response{Session: e.nextID}
 	case "close":
 		if sid, ok := e.sessions[req.Session]; ok {
@@ -256,7 +309,7 @@ func main() {
 	_ = os.Chmod(path, 0o600)
 	fmt.Fprintln(os.Stderr, "xiaoyu-ime daemon listening on", path)
 
-	eng := &engine{sessions: map[uint32]uint32{}, cursors: map[uint32]cursor{}, subs: map[net.Conn]*json.Encoder{}}
+	eng := &engine{sessions: map[uint32]uint32{}, cursors: map[uint32]cursor{}, subs: map[net.Conn]*json.Encoder{}, cfg: loadConfig()}
 
 	go func() {
 		api, err := rime.Setup("/usr/share/rime-data", userDir, "xiaoyu-ime")

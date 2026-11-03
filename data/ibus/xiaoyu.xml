@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ibus 组件描述：ibus-daemon 据此发现「小鱼输入法」并拉起 /usr/libexec/xiaoyu-ime-ibus -->
+<component>
+  <name>xiaoyu</name>
+  <version>0.1.0</version>
+  <description>小鱼输入法（Rime：全拼/小鹤双拼/五笔）</description>
+  <author>Waitfish</author>
+  <license>GPL-3.0-or-later</license>
+  <exec>/usr/libexec/xiaoyu-ime-ibus</exec>
+  <textdomain>xiaoyu-ime</textdomain>
+  <engines>
+    <engine>
+      <name>xiaoyu</name>
+      <longname>小鱼输入法</longname>
+      <description>Rime 引擎（全拼/小鹤双拼/五笔）</description>
+      <language>zh</language>
+      <license>GPL-3.0-or-later</license>
+      <author>Waitfish</author>
+      <icon>xiaoyu-input-method</icon>
+      <rank>999</rank>
+      <symbol>xiaoyu-input-method</symbol>
+    </engine>
+  </engines>
+</component>
