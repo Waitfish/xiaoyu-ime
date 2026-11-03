@@ -42,8 +42,8 @@ type Context struct {
 }
 
 type Candidate struct {
-	Text    string
-	Comment string
+	Text    string `json:"text"`
+	Comment string `json:"comment,omitempty"`
 }
 
 func Setup(sharedDataDir, userDataDir, appName string) (*Api, error) {
