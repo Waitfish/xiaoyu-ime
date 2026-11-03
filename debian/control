@@ -3,7 +3,7 @@ Section: utils
 Priority: optional
 Maintainer: Waitfish <daiwj2024@outlook.com>
 Build-Depends: debhelper-compat (= 13), cmake, pkg-config, fcitx5-modules-dev,
- librime-dev, nlohmann-json3-dev, golang-go
+ librime-dev, nlohmann-json3-dev, golang-go, libgtk-3-dev
 Standards-Version: 4.6.2
 Rules-Requires-Root: no
 
