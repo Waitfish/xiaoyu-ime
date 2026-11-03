@@ -34,11 +34,11 @@ public:
         if (!api_)
             return;
         if (RimeSessionId sid = api_->create_session())
-            sessions_[event.inputContext().uuid()] = sid;
+            sessions_[event.inputContext()->uuid()] = sid;
     }
 
     void deactivate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override {
-        auto it = sessions_.find(event.inputContext().uuid());
+        auto it = sessions_.find(event.inputContext()->uuid());
         if (it == sessions_.end())
             return;
         if (api_)
@@ -47,14 +47,14 @@ public:
     }
 
     void reset(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override {
-        auto it = sessions_.find(event.inputContext().uuid());
+        auto it = sessions_.find(event.inputContext()->uuid());
         if (it != sessions_.end() && api_)
             api_->clear_composition(it->second);
     }
 
     void keyEvent(const fcitx::InputMethodEntry &, fcitx::KeyEvent &keyEvent) override {
-        auto &ic = keyEvent.inputContext();
-        auto it = sessions_.find(ic.uuid());
+        auto *ic = keyEvent.inputContext();
+        auto it = sessions_.find(ic->uuid());
         if (it == sessions_.end() || !api_ || keyEvent.isRelease())
             return;
 
@@ -64,8 +64,8 @@ public:
 
         const bool handled =
             api_->process_key(it->second, static_cast<int>(key.sym()), rimeModifiers(key));
-        pollCommit(ic, it->second);
-        updateUI(ic, it->second);
+        pollCommit(*ic, it->second);
+        updateUI(*ic, it->second);
         if (handled)
             keyEvent.filterAndAccept();
     }
@@ -89,12 +89,17 @@ private:
     }
 
     static unsigned int rimeModifiers(const fcitx::Key &key) {
+        // librime 用 X11 修饰掩码（新版头文件不再导出枚举，值不变）
+        constexpr unsigned rimeShiftMask = 1u << 0;
+        constexpr unsigned rimeControlMask = 1u << 2;
+        constexpr unsigned rimeMod1Mask = 1u << 3;
+        const auto states = key.states();
         unsigned int m = 0;
-        if (key.modifiers() & fcitx::ModifierType::Ctrl)
+        if (states & fcitx::KeyState::Ctrl)
             m |= rimeControlMask;
-        if (key.modifiers() & fcitx::ModifierType::Alt)
+        if (states & fcitx::KeyState::Alt)
             m |= rimeMod1Mask;
-        if (key.modifiers() & fcitx::ModifierType::Shift)
+        if (states & fcitx::KeyState::Shift)
             m |= rimeShiftMask;
         return m;
     }
