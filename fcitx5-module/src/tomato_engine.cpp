@@ -114,7 +114,9 @@ private:
         api_ = rime_get_api();
         if (!api_)
             return;
-        RimeTraits traits;
+        // 关键：api->setup() 不填 data_size；data_size 无效时 librime 忽略全部 traits 字段
+        RimeTraits traits = {};
+        traits.data_size = sizeof(traits);
         api_->setup(&traits);
         const char *home = getenv("HOME");
         const std::string userDir = std::string(home ? home : ".") + "/.local/share/tomato-ime/rime";

@@ -51,6 +51,8 @@ func Setup(sharedDataDir, userDataDir, appName string) (*Api, error) {
 		return nil, errors.New("rime_get_api returned nil")
 	}
 	var traits C.RimeTraits
+	// setup() 不填 data_size；为 0 时 librime 忽略全部 traits 字段（必须手动置）
+	traits.data_size = C.int(unsafe.Sizeof(traits))
 	C.tr_setup(api, &traits)
 	cShared := C.CString(sharedDataDir)
 	cUser := C.CString(userDataDir)
