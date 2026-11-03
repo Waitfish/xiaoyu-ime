@@ -5,12 +5,14 @@ package main
 
 import (
 	"bufio"
-	"runtime"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
+	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -146,6 +148,42 @@ func (s *settingsUI) apply() {
 	s.status = "已应用（对当前所有输入窗口即时生效）"
 }
 
+// restartIME 重启小鱼输入法栈：daemon（systemd 用户服务）+ ibus 引擎进程。
+// 引擎被杀后，若当前 GNOME 源就是小鱼，主动 SetGlobalEngine 让 ibus-daemon
+// 立即重新拉起引擎；新引擎启动时自带对账，无需注销/重启系统。
+func (s *settingsUI) restartIME() {
+	s.status = "正在重启…"
+	_, err1 := exec.Command("systemctl", "--user", "restart", "xiaoyu-ime-daemon").CombinedOutput()
+	_ = exec.Command("pkill", "-x", "xiaoyu-ime-ibus").Run() // 不在跑则非零，忽略
+	time.Sleep(1200 * time.Millisecond)
+	if gnomeSourceIsXiaoyu() {
+		_, err2 := exec.Command("ibus", "engine", "xiaoyu").CombinedOutput()
+		if err1 == nil && err2 == nil {
+			s.status = "已重启，直接打字即可"
+		} else {
+			s.status = "已重启（部分步骤失败，若无效请再点一次）"
+		}
+	} else {
+		s.status = "已重启（当前源非小鱼，切到小鱼即生效）"
+	}
+}
+
+func gnomeSourceIsXiaoyu() bool {
+	src, err := exec.Command("gsettings", "get", "org.gnome.desktop.input-sources", "sources").Output()
+	if err != nil {
+		return false
+	}
+	cur, err := exec.Command("gsettings", "get", "org.gnome.desktop.input-sources", "current").Output()
+	if err != nil {
+		return false
+	}
+	re := regexp.MustCompile(`\('(xkb|ibus)',\s*'([^']+)'\)`)
+	all := re.FindAllStringSubmatch(string(src), -1)
+	idx := 0
+	fmt.Sscanf(strings.TrimSpace(string(cur)), "uint32 %d", &idx)
+	return idx >= 0 && idx < len(all) && all[idx][1] == "ibus" && all[idx][2] == "xiaoyu"
+}
+
 func (s *settingsUI) view(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).Fill().Gap(12).Padding(18).Children(func() {
@@ -156,6 +194,7 @@ func (s *settingsUI) view(c *ui.Context) {
 			ui.Divider(c)
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 				ui.PrimaryButton(c, "应用").OnClick(s.apply)
+				ui.Button(c, "重启输入法").OnClick(s.restartIME)
 				if s.status != "" {
 					ui.Text(c, s.status).FontSize(12).TextColor(t.TextMuted)
 				}
@@ -178,6 +217,7 @@ func (s *settingsUI) view(c *ui.Context) {
 		ui.Divider(c)
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.PrimaryButton(c, "应用").OnClick(s.apply)
+			ui.Button(c, "重启输入法").OnClick(s.restartIME)
 			if s.status != "" {
 				ui.Text(c, s.status).FontSize(12).TextColor(t.TextMuted)
 			}
