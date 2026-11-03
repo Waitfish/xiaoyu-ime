@@ -301,13 +301,16 @@ func main() {
 	// 先 listen 再做 rime 初始化：模块 activate 时能连上；
 	// 就绪前 open 返回错误，模块会在下一次按键时懒重试（见 xiaoyu_engine.cpp）。
 	path := socketPath()
-	// 已有实例在跑则直接退出（模块会连上旧实例）
-	if _, err := os.Stat(path); err == nil {
-		if c, derr := net.Dial("unix", path); derr == nil {
-			c.Close()
-			fmt.Fprintln(os.Stderr, "another daemon already owns", path)
-			return
-		}
+	// 单例用 lock 文件上的 flock（原子，无竞态）。
+	// 旧的 "stat+dial" 检查在两个实例同时启动时会互相抢 socket，
+	// 出现两个 librime 实例共用用户目录 → 部署状态损坏 → 所有会话按键直通。
+	lockF, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		log.Fatalf("lock file: %v", err)
+	}
+	if err := syscall.Flock(int(lockF.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		fmt.Fprintln(os.Stderr, "another daemon already owns", path)
+		return
 	}
 	_ = os.Remove(path)
 	ln, err := net.Listen("unix", path)
