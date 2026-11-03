@@ -28,6 +28,7 @@ import (
 
 type request struct {
 	Op      string  `json:"op"`
+	Config  *config `json:"config,omitempty"`
 	Session uint32  `json:"session"`
 	Keysym  int     `json:"keysym"`
 	Mods    uint    `json:"mods"`
@@ -50,6 +51,7 @@ type response struct {
 	IsLastPage  bool            `json:"is_last_page"`
 	Highlight   int             `json:"highlight"`
 	UIConnected bool            `json:"ui_connected"`
+	Config      *config         `json:"config,omitempty"`
 	Error       string          `json:"error,omitempty"`
 }
 
@@ -109,11 +111,30 @@ var allowedSchemas = map[string]bool{
 	"wubi86":             true, // 五笔 86
 }
 
+func configPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "xiaoyu-ime", "config.json"), nil
+}
+
+func persistConfig(cfg config) error {
+	path, err := configPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	b, _ := json.MarshalIndent(cfg, "", "  ")
+	return os.WriteFile(path, b, 0o644)
+}
+
 func loadConfig() config {
 	cfg := config{Schema: "luna_pinyin_simp"}
-	home, err := os.UserHomeDir()
-	if err == nil {
-		if b, err := os.ReadFile(filepath.Join(home, ".config", "xiaoyu-ime", "config.json")); err == nil {
+	if path, err := configPath(); err == nil {
+		if b, err := os.ReadFile(path); err == nil {
 			_ = json.Unmarshal(b, &cfg)
 		}
 	}
@@ -240,6 +261,28 @@ func (e *engine) handle(req *request, conn net.Conn) response {
 			e.broadcast(req.Session, e.api.GetContext(sid))
 		}
 		return response{}
+	// 注意：handle() 全程持有 e.mu，这里绝不能再 Lock（Go 互斥锁不可重入，会死锁）。
+	case "get_config":
+		cfg := e.cfg
+		return response{Config: &cfg}
+	case "set_config":
+		if req.Config == nil {
+			return response{Error: "missing config"}
+		}
+		nc := *req.Config
+		if !allowedSchemas[nc.Schema] {
+			return response{Error: "unknown schema: " + nc.Schema}
+		}
+		e.cfg = nc
+		for _, sid := range e.sessions {
+			e.applyConfig(sid) // 立即作用到所有在线会话
+		}
+		go func(c config) {
+			if err := persistConfig(c); err != nil {
+				fmt.Fprintln(os.Stderr, "persist config:", err)
+			}
+		}(nc)
+		return response{Config: &nc}
 	case "ui": // 模块上报光标位置
 		e.cursors[req.Session] = cursor{req.X, req.Y, req.W, req.H, req.Scale}
 		if sid, ok := e.sessions[req.Session]; ok {

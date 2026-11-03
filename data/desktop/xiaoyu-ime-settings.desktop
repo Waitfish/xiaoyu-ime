@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=小鱼输入法设置
+Name[en]=Xiaoyu IME Settings
+Comment=输入方案与默认输入状态设置
+Exec=/usr/libexec/xiaoyu-ime-ui --settings
+Icon=xiaoyu-input-method
+Terminal=false
+Categories=Settings;
+Keywords=输入法;拼音;双拼;五笔;

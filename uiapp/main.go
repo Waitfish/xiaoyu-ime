@@ -188,6 +188,10 @@ func (u *imeUI) view(c *ui.Context) {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--settings" {
+		runSettings()
+		return
+	}
 	u := &imeUI{}
 	// MyGo 要求窗口在 App 就绪后创建（NewWindow 早于 WhenReady 会 panic）
 	mygo.App.WhenReady(func() {
