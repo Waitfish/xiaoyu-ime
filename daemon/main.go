@@ -332,6 +332,12 @@ func main() {
 		eng.api = api
 		eng.ready = true
 		eng.mu.Unlock()
+		// librime 坑：setup 后创建的第一个会话永远无法处理按键（schema 惰性
+		// 初始化被首个会话吸收）。创建一个牺牲会话预热，真实会话从第二个起正常。
+		if sid := api.CreateSession(); sid != 0 {
+			api.ProcessKey(sid, 0x20, 0)
+			api.DestroySession(sid)
+		}
 		fmt.Fprintln(os.Stderr, "rime ready")
 	}()
 
