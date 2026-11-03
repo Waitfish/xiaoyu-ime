@@ -136,7 +136,10 @@ func (e *engine) applyConfig(sid uint32) {
 	if e.cfg.Simplification != nil {
 		simp = *e.cfg.Simplification
 	}
+	// 简繁开关的 rime 选项名因方案而异：luna_pinyin_simp 用 zh_simp，
+	// luna/double_pinyin 用 simplification——两个都设，无副作用。
 	e.api.SetOption(sid, "simplification", simp)
+	e.api.SetOption(sid, "zh_simp", simp)
 	full := false
 	if e.cfg.FullShape != nil {
 		full = *e.cfg.FullShape
