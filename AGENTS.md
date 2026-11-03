@@ -38,8 +38,13 @@ macOS 本地编译 daemon：`PKG_CONFIG_PATH=/opt/homebrew/opt/librime/lib/pkgco
 ## 里程碑状态
 
 M1 fcitx5 模块（真机打字验证通过，26.04 arm64）
-M2 Go 守护进程：**已上线**——模块纯转发（不再链接 librime），socket `$XDG_RUNTIME_DIR/tomato-ime.sock`，
-   协议换行 JSON：`{"op":"open|close|reset|key",...}`；模块连接失败自动 fork/exec `/usr/libexec/tomato-ime-daemon`；
-   daemon 独占 librime，全局 mutex 串行（librime 非线程安全）；协议字段小写（Go 侧必须加 json tag）。
-→ M3 MyGo 候选窗/设置程序 → M4 PPA。
+M2 Go 守护进程：已上线（见上方协议）
+M3 MyGo 候选窗：**核心已上线**——daemon 中枢（subscribe/ui光标/select/状态广播/ui_connected 协商）；
+   模块检测到候选窗在线即清空内置面板；uiapp（GTK3，vendor 离线构建，进 deb /usr/libexec/tomato-ime-ui）；
+   daemon 启动时自动拉起 uiapp，但 **GNOME Wayland 无 layer-shell → 跳过并回退内置面板**（已实测）；
+   视觉验证走 `ui.Render` 离屏渲染 + 像素断言（模型不能读图时的替代）。
+   待做：设置程序（方案切换/词库同步）。
+→ M4 PPA。
+坑：测试脚本里 `eval "$(systemctl --user show-environment)"` 必须 `set -a`（否则变量不 export，
+   子进程看不到 XDG_SESSION_TYPE 等，行为与真实 fcitx5 拉起的进程不一致）。
 注意：进程名 tomato-ime-daemon 超 15 字符，pkill -x 匹配不到，用 `pkill -f "^/usr/libexec/tomato-ime-daemon$"`。
