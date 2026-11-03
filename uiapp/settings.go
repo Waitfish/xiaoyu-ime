@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -141,6 +142,11 @@ func (s *settingsUI) switchRow(c *ui.Context, label string, on *bool, onHint, of
 
 // runSettings 打开设置窗口（xiaoyu-ime-ui --settings）。
 func runSettings() {
+	// GNOME Wayland 上 MyGo 的 GTK/Wayland 路径会让 mutter 主循环停摆数秒
+	// （实测 DBus 探针超时；GDK_BACKEND=x11 走 XWayland 后零卡顿）。
+	if strings.Contains(strings.ToLower(os.Getenv("XDG_CURRENT_DESKTOP")), "gnome") {
+		os.Setenv("GDK_BACKEND", "x11")
+	}
 	s := &settingsUI{m: cfgModel{Schema: "luna_pinyin_simp", Simplification: true}}
 	if m, err := daemonCall(map[string]any{"op": "get_config"}); err == nil {
 		s.m = *m
