@@ -589,7 +589,7 @@ func xkbEngineName(ibusConn *dbus.Conn, layout string) string {
 	for _, e := range engines {
 		if desc, ok := e.([]interface{}); ok && len(desc) > 2 {
 			if n, ok := desc[2].(string); ok && strings.HasPrefix(n, prefix) {
-				if n == prefix+":" {
+				if strings.HasPrefix(n, prefix+":") { // xkb:<layout>::<lang>（空变体）
 					exact = n
 					break
 				}
