@@ -1,14 +1,9 @@
-// 番茄输入法 fcitx5 引擎模块（M1：模块内直接嵌入 librime）
+// 番茄输入法 fcitx5 引擎模块（M2：引擎在 Go 守护进程，本模块只做按键转发与 UI 同步）
 //
-// 架构（见 docs/architecture.md）：本模块是永久存在的"平台薄壳"，
-// M2 会把引擎换成 Go 守护进程（daemon/），本文件只剩按键转发与 UI 同步。
+// 架构（docs/architecture.md）：模块加载进 fcitx5 进程，绝不嵌入 Go/librime 运行时；
+// 引擎在 tomato-ime-daemon（unix socket，换行分隔 JSON）。连接失败时自动拉起守护进程。
 //
-// 按 fcitx5 5.1.7（Ubuntu 24.04/26.04）真实头文件编写：
-//   引擎 = InputMethodEngineV2（本身就是 AddonInstance），工厂 create(AddonManager*)；
-//   activate/deactivate/reset 收 InputContextEvent&，inputContext() 返回指针；
-//   UI 走 InputContext::inputPanel()（setPreedit / setCandidateList(DisplayOnlyCandidateList)）
-//   + updateUserInterface；提交用 commitString()；
-//   IM 条目由 /usr/share/fcitx5/inputmethod/tomato.conf 声明。
+// 按 fcitx5 5.1.7 真实头文件编写（要点见 AGENTS.md 铁律）。
 #include <fcitx/addonfactory.h>
 #include <fcitx/addoninstance.h>
 #include <fcitx/candidatelist.h>
@@ -18,63 +13,200 @@
 #include <fcitx/inputpanel.h>
 #include <fcitx/text.h>
 #include <fcitx/userinterface.h>
-#include <rime_api.h>
+#include <nlohmann/json.hpp>
 
+#include <cerrno>
 #include <cstdlib>
-#include <filesystem>
-#include <fstream>
 #include <map>
+#include <poll.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace {
 
-class TomatoEngine : public fcitx::InputMethodEngineV2 {
+using json = nlohmann::json;
+
+class RimeClient {
 public:
-    TomatoEngine() { initRime(); }
-    ~TomatoEngine() override {
-        if (api_)
-            api_->finalize();
+    ~RimeClient() { closeSocket(); }
+
+    // 确保连接可用；必要时拉起守护进程并重试。
+    bool ensureConnected() {
+        if (fd_ >= 0)
+            return true;
+        for (int attempt = 0; attempt < 6; ++attempt) {
+            fd_ = tryConnect();
+            if (fd_ >= 0)
+                return true;
+            if (attempt == 0)
+                spawnDaemon();
+            usleep(120000);
+        }
+        return false;
     }
 
-    void activate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override {
-        if (!api_)
+    // 发送一个请求并读取一行响应；失败返回 null（连接会被丢弃）。
+    json call(const json &req) {
+        if (fd_ < 0)
+            return nullptr;
+        const std::string line = req.dump() + "\n";
+        if (!writeAll(line)) {
+            closeSocket();
+            return nullptr;
+        }
+        std::string respLine;
+        if (!readLine(respLine)) {
+            closeSocket();
+            return nullptr;
+        }
+        json parsed = json::parse(respLine, nullptr, false);
+        if (parsed.is_discarded()) {
+            closeSocket();
+            return nullptr;
+        }
+        return parsed;
+    }
+
+private:
+    static std::string socketPath() {
+        const char *xdg = getenv("XDG_RUNTIME_DIR");
+        std::string dir = xdg && *xdg ? xdg : "/tmp";
+        return dir + "/tomato-ime.sock";
+    }
+
+    static int tryConnect() {
+        int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        if (fd < 0)
+            return -1;
+        sockaddr_un addr{};
+        addr.sun_family = AF_UNIX;
+        strncpy(addr.sun_path, socketPath().c_str(), sizeof(addr.sun_path) - 1);
+        if (::connect(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
+            ::close(fd);
+            return -1;
+        }
+        return fd;
+    }
+
+    void spawnDaemon() {
+        static const char *candidates[] = {
+            "/usr/libexec/tomato-ime-daemon",
+            "/usr/lib/tomato-ime/tomato-ime-daemon",
+        };
+        const char *path = nullptr;
+        for (const char *c : candidates) {
+            if (access(c, X_OK) == 0) {
+                path = c;
+                break;
+            }
+        }
+        if (!path)
             return;
-        if (RimeSessionId sid = api_->create_session())
-            sessions_[event.inputContext()->uuid()] = sid;
+        pid_t pid = fork();
+        if (pid == 0) {
+            setsid();
+            int devnull = open("/dev/null", O_RDWR);
+            if (devnull >= 0) {
+                dup2(devnull, 0);
+                dup2(devnull, 1);
+                dup2(devnull, 2);
+            }
+            execl(path, path, static_cast<char *>(nullptr));
+            _exit(127);
+        }
+    }
+
+    bool writeAll(const std::string &data) {
+        size_t off = 0;
+        while (off < data.size()) {
+            ssize_t n = ::send(fd_, data.data() + off, data.size() - off, MSG_NOSIGNAL);
+            if (n <= 0)
+                return false;
+            off += static_cast<size_t>(n);
+        }
+        return true;
+    }
+
+    bool readLine(std::string &out) {
+        out.clear();
+        char c;
+        while (true) {
+            struct pollfd pfd{fd_, POLLIN, 0};
+            int pr = ::poll(&pfd, 1, 800);
+            if (pr <= 0)
+                return false;
+            ssize_t n = ::recv(fd_, &c, 1, 0);
+            if (n != 1)
+                return false;
+            if (c == '\n')
+                return true;
+            out.push_back(c);
+            if (out.size() > 4u << 20)
+                return false;
+        }
+    }
+
+    void closeSocket() {
+        if (fd_ >= 0) {
+            ::close(fd_);
+            fd_ = -1;
+        }
+    }
+
+    int fd_ = -1;
+};
+
+class TomatoEngine : public fcitx::InputMethodEngineV2 {
+public:
+    void activate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override {
+        if (!client_.ensureConnected())
+            return;
+        auto resp = client_.call({{"op", "open"}});
+        if (resp.is_null() || !resp.contains("session"))
+            return;
+        sessions_[event.inputContext()->uuid()] = resp["session"].get<uint32_t>();
     }
 
     void deactivate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override {
         auto it = sessions_.find(event.inputContext()->uuid());
         if (it == sessions_.end())
             return;
-        if (api_)
-            api_->destroy_session(it->second);
+        client_.call({{"op", "close"}, {"session", it->second}});
         sessions_.erase(it);
     }
 
     void reset(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override {
         auto it = sessions_.find(event.inputContext()->uuid());
-        if (it != sessions_.end() && api_)
-            api_->clear_composition(it->second);
+        if (it != sessions_.end())
+            client_.call({{"op", "reset"}, {"session", it->second}});
     }
 
     void keyEvent(const fcitx::InputMethodEntry &, fcitx::KeyEvent &keyEvent) override {
         auto *ic = keyEvent.inputContext();
         auto it = sessions_.find(ic->uuid());
-        if (it == sessions_.end() || !api_ || keyEvent.isRelease())
+        if (it == sessions_.end() || keyEvent.isRelease())
             return;
 
         const auto key = keyEvent.key();
         if (isModifier(key.sym()))
             return;
 
-        const bool handled =
-            api_->process_key(it->second, static_cast<int>(key.sym()), rimeModifiers(key));
-        pollCommit(*ic, it->second);
-        updateUI(*ic, it->second);
-        if (handled)
+        auto resp = client_.call({{"op", "key"},
+                                  {"session", it->second},
+                                  {"keysym", static_cast<int>(key.sym())},
+                                  {"mods", rimeModifiers(key)}});
+        if (resp.is_null())
+            return; // 守护进程不可用：放行按键，应用收到原始输入
+
+        if (resp.contains("commit"))
+            ic->commitString(resp["commit"].get<std::string>());
+        updateUI(*ic, resp);
+        if (resp.value("handled", false))
             keyEvent.filterAndAccept();
     }
 
@@ -112,82 +244,36 @@ private:
         return m;
     }
 
-    // 首次运行引导：默认简体拼音方案。注意 librime 会把缺 config_version 的用户配置移进 trash/
-    static void ensureUserConfig(const std::string &userDir) {
-        std::error_code ec;
-        std::filesystem::create_directories(userDir, ec);
-        const auto path = std::filesystem::path(userDir) / "default.yaml";
-        if (std::filesystem::exists(path))
-            return;
-        std::ofstream f(path);
-        f << "config_version: \"1.0\"\n"
-             "schema_list:\n"
-             "  - schema: luna_pinyin_simp\n";
-    }
-
-    void initRime() {
-        api_ = rime_get_api();
-        if (!api_)
-            return;
-        const char *home = getenv("HOME");
-        const std::string userDir = std::string(home ? home : ".") + "/.local/share/tomato-ime/rime";
-        ensureUserConfig(userDir);
-        // 关键：api->setup() 不填 data_size；data_size 无效时 librime 忽略全部 traits 字段
-        RimeTraits traits = {};
-        traits.data_size = sizeof(traits);
-        api_->setup(&traits);
-        traits.shared_data_dir = "/usr/share/rime-data";
-        traits.user_data_dir = userDir.c_str();
-        traits.app_name = "tomato-ime";
-        traits.distribution_name = "Ubuntu";
-        traits.distribution_code_name = "resolute";
-        traits.distribution_version = "26.04";
-        api_->initialize(&traits);
-        api_->start_maintenance(true);
-    }
-
-    void pollCommit(fcitx::InputContext &ic, RimeSessionId sid) {
-        RIME_STRUCT(RimeCommit, commit);
-        if (api_->get_commit(sid, &commit)) {
-            ic.commitString(commit.text);
-            api_->free_commit(&commit);
-        }
-    }
-
-    void updateUI(fcitx::InputContext &ic, RimeSessionId sid) {
-        RIME_STRUCT(RimeContext, ctx);
-        api_->get_context(sid, &ctx);
-
+    static void updateUI(fcitx::InputContext &ic, const json &resp) {
         auto &panel = ic.inputPanel();
 
         fcitx::Text preedit;
-        if (ctx.composition.preedit && ctx.composition.length > 0)
-            preedit.append(ctx.composition.preedit);
+        if (resp.contains("preedit"))
+            preedit.append(resp["preedit"].get<std::string>());
         panel.setPreedit(preedit);
 
-        if (ctx.menu.candidates && ctx.menu.num_candidates > 0) {
+        if (resp.contains("candidates") && !resp["candidates"].empty()) {
             auto cl = std::make_unique<fcitx::DisplayOnlyCandidateList>();
             std::vector<fcitx::Text> contents;
-            for (size_t i = 0; i < ctx.menu.num_candidates; ++i) {
-                const auto &cand = ctx.menu.candidates[i];
-                fcitx::Text text(cand.text);
-                if (cand.comment && *cand.comment)
-                    text.append(" " + std::string(cand.comment));
+            for (const auto &cand : resp["candidates"]) {
+                fcitx::Text text(cand.value("text", ""));
+                const std::string comment = cand.value("comment", "");
+                if (!comment.empty())
+                    text.append(" " + comment);
                 contents.push_back(std::move(text));
             }
             cl->setContent(std::move(contents));
-            cl->setCursorIndex(ctx.menu.highlighted_candidate_index);
+            cl->setCursorIndex(resp.value("highlight", 0));
             panel.setCandidateList(std::move(cl));
         } else {
             panel.setCandidateList(nullptr);
         }
 
         ic.updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
-        api_->free_context(&ctx);
     }
 
-    RimeApi *api_ = nullptr;
-    std::map<fcitx::ICUUID, RimeSessionId> sessions_;
+    RimeClient client_;
+    std::map<fcitx::ICUUID, uint32_t> sessions_;
 };
 
 class TomatoModuleFactory : public fcitx::AddonFactory {

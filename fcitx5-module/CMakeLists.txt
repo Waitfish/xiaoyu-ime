@@ -5,12 +5,13 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Fcitx5Core REQUIRED)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(RIME REQUIRED rime)
+
+# M2：模块不再链接 librime（引擎在 Go 守护进程），只需 nlohmann-json（header-only）
+find_path(NLOHMANN_JSON_INCLUDE nlohmann/json.hpp REQUIRED)
 
 add_library(tomato-ime MODULE src/tomato_engine.cpp)
-target_include_directories(tomato-ime PRIVATE ${RIME_INCLUDE_DIRS})
-target_link_libraries(tomato-ime PRIVATE ${RIME_LIBRARIES} Fcitx5::Core)
+target_include_directories(tomato-ime PRIVATE ${NLOHMANN_JSON_INCLUDE})
+target_link_libraries(tomato-ime PRIVATE Fcitx5::Core)
 target_compile_options(tomato-ime PRIVATE -Wall -Wextra)
 
 # fcitx5 addon 安装目录：CMake 配置变量 → pkg-config → 多架构 lib 目录兜底
@@ -31,3 +32,5 @@ endif()
 install(FILES data/tomato.conf DESTINATION ${FCITX_INSTALL_PKGDATADIR}/addon)
 install(FILES data/inputmethod.tomato.conf DESTINATION ${FCITX_INSTALL_PKGDATADIR}/inputmethod
         RENAME tomato.conf)
+install(FILES data/tomato-input-method.svg
+        DESTINATION ${CMAKE_INSTALL_FULL_DATADIR}/icons/hicolor/scalable/status)

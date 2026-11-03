@@ -1,3 +1,11 @@
 #!/usr/bin/make -f
 %:
 	dh $@ --buildsystem=cmake --sourcedirectory=fcitx5-module
+
+override_dh_auto_build-arch:
+	dh_auto_build
+	cd daemon && go build -buildvcs=false -o tomato-ime-daemon .
+
+override_dh_auto_install-arch:
+	dh_auto_install
+	install -D daemon/tomato-ime-daemon debian/tomato-ime-fcitx5/usr/libexec/tomato-ime-daemon
