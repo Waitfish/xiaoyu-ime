@@ -9,3 +9,6 @@ override_dh_auto_build-arch:
 override_dh_auto_install-arch:
 	dh_auto_install
 	install -D daemon/tomato-ime-daemon debian/tomato-ime-fcitx5/usr/libexec/tomato-ime-daemon
+
+# dwz 处理不了 Go 的 DWARF
+override_dh_dwz:
