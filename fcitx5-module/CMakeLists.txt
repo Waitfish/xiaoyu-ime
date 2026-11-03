@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Fcitx5Core REQUIRED)
+find_package(PkgConfig REQUIRED) # pkg_get_variable 用于 addon 安装目录探测
 
 # M2：模块不再链接 librime（引擎在 Go 守护进程），只需 nlohmann-json（header-only）
 find_path(NLOHMANN_JSON_INCLUDE nlohmann/json.hpp REQUIRED)
