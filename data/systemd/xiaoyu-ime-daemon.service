@@ -1,0 +1,13 @@
+[Unit]
+Description=小鱼输入法引擎守护进程（librime）
+# 用户认证完成即启动（早于桌面 autostart 数秒），登录时词库部署尽量赶在
+# 用户打开第一个应用之前完成。与 XDG autostart 并存无妨：daemon 对 socket
+# 做 flock 单例，后启动者自动退出。
+
+[Service]
+ExecStart=/usr/libexec/xiaoyu-ime-daemon
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

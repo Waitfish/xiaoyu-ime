@@ -17,6 +17,7 @@ override_dh_auto_install-arch:
 	install -D settings-gtk/xiaoyu-ime-settings debian/xiaoyu-ime/usr/libexec/xiaoyu-ime-settings
 	install -D data/ibus/xiaoyu.xml debian/xiaoyu-ime/usr/share/ibus/component/xiaoyu.xml
 	install -D data/autostart/xiaoyu-ime-daemon.desktop debian/xiaoyu-ime/etc/xdg/autostart/xiaoyu-ime-daemon.desktop
+	install -D data/systemd/xiaoyu-ime-daemon.service debian/xiaoyu-ime/usr/lib/systemd/user/xiaoyu-ime-daemon.service
 	install -D data/desktop/xiaoyu-ime-settings.desktop debian/xiaoyu-ime/usr/share/applications/xiaoyu-ime-settings.desktop
 
 # dwz 处理不了 Go 的 DWARF

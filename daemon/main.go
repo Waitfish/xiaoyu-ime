@@ -23,6 +23,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/godbus/dbus/v5"
+
 	"xiaoyu-ime/daemon/rime"
 )
 
@@ -319,13 +321,29 @@ func (e *engine) handle(req *request, conn net.Conn) response {
 	}
 }
 
+// gnomeSession 判断当前是否 GNOME 会话。systemd user service 早期启动时
+// 环境里没有 XDG_CURRENT_DESKTOP，用会话总线上 org.gnome.Shell 是否存在兜底。
+func gnomeSession() bool {
+	if strings.Contains(os.Getenv("XDG_CURRENT_DESKTOP"), "GNOME") {
+		return true
+	}
+	conn, err := dbus.ConnectSessionBus()
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+	var owner string
+	err = conn.BusObject().Call("org.freedesktop.DBus.NameHasOwner", 0,
+		"org.gnome.Shell").Store(&owner)
+	return err == nil && owner != ""
+}
+
 // spawnUI 拉起 MyGo 候选窗（继承本进程会话环境）。
 // GNOME Wayland 不支持 layer-shell，候选窗会退化成普通窗——跳过，
 // 让模块回退 fcitx5 内置面板（无订阅者时自动如此）。
 func spawnUI() {
-	if os.Getenv("XDG_SESSION_TYPE") == "wayland" &&
-		strings.Contains(os.Getenv("XDG_CURRENT_DESKTOP"), "GNOME") {
-		fmt.Fprintln(os.Stderr, "GNOME Wayland: 候选窗退化为普通窗，跳过 uiapp（用内置面板）")
+	if gnomeSession() {
+		fmt.Fprintln(os.Stderr, "GNOME: 候选窗退化为普通窗，跳过 uiapp（用内置面板）")
 		return
 	}
 	for _, path := range []string{"/usr/libexec/xiaoyu-ime-ui", "/usr/lib/xiaoyu-ime/xiaoyu-ime-ui"} {

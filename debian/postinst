@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+if [ "$1" = "configure" ]; then
+	# 为所有用户的 systemd user manager 启用（登录即拉起 daemon，早于桌面 autostart）
+	systemctl --global enable xiaoyu-ime-daemon.service 2>/dev/null || true
+fi
+#DEBHELPER#
+exit 0
