@@ -1,0 +1,5 @@
+tomato-ime (0.1.0) resolute; urgency=medium
+
+  * M1: fcitx5 engine module with embedded librime (luna_pinyin).
+
+ -- Waitfish <daiwj2024@outlook.com>  Tue, 03 Nov 2026 12:15:00 +0800
