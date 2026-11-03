@@ -3,7 +3,7 @@ Type=Application
 Name=小鱼输入法设置
 Name[en]=Xiaoyu IME Settings
 Comment=输入方案与默认输入状态设置
-Exec=/usr/libexec/xiaoyu-ime-settings
+Exec=env GOMAXPROCS=1 LIBGL_ALWAYS_SOFTWARE=1 /usr/libexec/xiaoyu-ime-ui --settings
 Icon=xiaoyu-input-method
 Terminal=false
 Categories=Settings;

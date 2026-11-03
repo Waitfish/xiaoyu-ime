@@ -5,6 +5,7 @@ package main
 
 import (
 	"bufio"
+	"runtime"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -164,9 +165,9 @@ func runSettings() {
 		os.Setenv("GDK_BACKEND", "x11")
 	}
 	logStart := time.Now()
-	uiLog("start desktop=%q backend=%q DISPLAY=%q WAYLAND=%q",
+	uiLog("start desktop=%q backend=%q DISPLAY=%q WAYLAND=%q GOMAXPROCS=%d",
 		os.Getenv("XDG_CURRENT_DESKTOP"), os.Getenv("GDK_BACKEND"),
-		os.Getenv("DISPLAY"), os.Getenv("WAYLAND_DISPLAY"))
+		os.Getenv("DISPLAY"), os.Getenv("WAYLAND_DISPLAY"), runtime.GOMAXPROCS(0))
 	s := &settingsUI{m: cfgModel{Schema: "luna_pinyin_simp", Simplification: true}}
 	if m, err := daemonCall(map[string]any{"op": "get_config"}); err == nil {
 		s.m = *m
