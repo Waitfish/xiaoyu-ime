@@ -353,6 +353,7 @@ func spawnUI() {
 			cmd.Stdout, cmd.Stderr = nil, nil
 			if err := cmd.Start(); err == nil {
 				fmt.Fprintln(os.Stderr, "spawned uiapp", path)
+				go func() { _, _ = cmd.Process.Wait() }() // 回收，避免僵尸
 			}
 			return
 		}

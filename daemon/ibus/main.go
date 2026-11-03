@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -452,6 +453,159 @@ func (e *engineObj) GetAll(iface string) (map[string]dbus.Variant, *dbus.Error) 
 	}, nil
 }
 
+// ---------- GNOME 输入源 ↔ ibus 全局引擎对账器 ----------
+// 根治"状态栏显示小鱼、实际引擎是键盘"的不一致：GNOME 切源时若 ibus 引擎
+// 切换失败（登录竞态、组件未注册等），指示与引擎就永久分叉。对账器以
+// gsettings（状态栏的真值）为准：当前源是 ibus/xiaoyu 而 ibus 全局引擎不是
+// xiaoyu 时，主动 SetGlobalEngine("xiaoyu")。用户主动切到别的源时不干预。
+
+func startReconciler(ibusConn *dbus.Conn) {
+	sbus, err := dbus.ConnectSessionBus()
+	if err != nil {
+		return // 非 GNOME/无会话总线（fcitx5/wlroots 环境）：不启用
+	}
+	if _, err := exec.LookPath("gsettings"); err != nil {
+		return
+	}
+	// dconf 写入广播（用户切输入源）
+	if err := sbus.AddMatchSignal(
+		dbus.WithMatchInterface("ca.desrt.dconf.Writer"),
+		dbus.WithMatchMember("Notify"),
+	); err != nil {
+		sbus.Close()
+		return
+	}
+	// ibus 全局引擎变化
+	if err := ibusConn.AddMatchSignal(
+		dbus.WithMatchInterface("org.freedesktop.IBus"),
+		dbus.WithMatchMember("GlobalEngineChanged"),
+	); err != nil {
+		sbus.Close()
+		return
+	}
+	events := make(chan struct{}, 4)
+	trySend := func() {
+		select {
+		case events <- struct{}{}:
+		default:
+		}
+	}
+	sbusSigs := make(chan *dbus.Signal, 16)
+	sbus.Signal(sbusSigs)
+	ibusSigs := make(chan *dbus.Signal, 16)
+	ibusConn.Signal(ibusSigs)
+	go func() {
+		for sig := range sbusSigs {
+			if sig.Name == "ca.desrt.dconf.Writer.Notify" {
+				for _, a := range sig.Body {
+					hit := false
+					for _, ch := range flattenStrings(a) {
+						if strings.Contains(ch, "input-sources") {
+							hit = true
+							break
+						}
+					}
+					if hit {
+						trySend()
+						break
+					}
+				}
+			}
+		}
+	}()
+	go func() {
+		for sig := range ibusSigs {
+			if sig.Name == "org.freedesktop.IBus.GlobalEngineChanged" {
+				trySend()
+			}
+		}
+	}()
+	go func() {
+		debounce := time.NewTimer(time.Hour)
+		debounce.Stop()
+		for range events {
+			debounce.Reset(400 * time.Millisecond)
+			<-debounce.C
+			reconcile(sbus, ibusConn)
+		}
+	}()
+	// 启动即对账一次（登录竞态：源已是小鱼但引擎没切）+ 短重试
+	go func() {
+		for i := 0; i < 5; i++ {
+			reconcile(sbus, ibusConn)
+			time.Sleep(2 * time.Second)
+		}
+	}()
+}
+
+func flattenStrings(v interface{}) []string {
+	var out []string
+	switch t := v.(type) {
+	case string:
+		out = append(out, t)
+	case []string:
+		out = append(out, t...)
+	case []interface{}:
+		for _, e := range t {
+			out = append(out, flattenStrings(e)...)
+		}
+	}
+	return out
+}
+
+// currentSourceIsXiaoyu 解析 gsettings input-sources，判断当前激活源。
+func currentSourceIsXiaoyu() bool {
+	out, err := exec.Command("gsettings", "get", "org.gnome.desktop.input-sources", "sources").Output()
+	if err != nil {
+		return false
+	}
+	re := regexp.MustCompile(`\('(xkb|ibus)',\s*'([^']+)'\)`)
+	all := re.FindAllStringSubmatch(string(out), -1)
+	if len(all) == 0 {
+		return false
+	}
+	outc, err := exec.Command("gsettings", "get", "org.gnome.desktop.input-sources", "current").Output()
+	if err != nil {
+		return false
+	}
+	idx := 0
+	fmt.Sscanf(strings.TrimSpace(string(outc)), "uint32 %d", &idx)
+	if idx < 0 || idx >= len(all) {
+		return false
+	}
+	return all[idx][1] == "ibus" && all[idx][2] == "xiaoyu"
+}
+
+func globalEngineName(ibusConn *dbus.Conn) string {
+	obj := ibusConn.Object("org.freedesktop.IBus", "/org/freedesktop/IBus")
+	var desc []interface{}
+	if err := obj.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.IBus", "GlobalEngine").Store(&desc); err != nil {
+		return ""
+	}
+	// ('IBusEngineDesc', a{sv}, name, ...)
+	if len(desc) > 2 {
+		if n, ok := desc[2].(string); ok {
+			return n
+		}
+	}
+	return ""
+}
+
+func reconcile(sbus, ibusConn *dbus.Conn) {
+	if !currentSourceIsXiaoyu() {
+		return
+	}
+	if globalEngineName(ibusConn) == "xiaoyu" {
+		return
+	}
+	obj := ibusConn.Object("org.freedesktop.IBus", "/org/freedesktop/IBus")
+	if call := obj.Call("org.freedesktop.IBus.SetGlobalEngine", 0, "xiaoyu"); call.Err != nil {
+		log.Println("reconcile SetGlobalEngine:", call.Err)
+		return
+	}
+	log.Println("reconciled: ibus global engine -> xiaoyu (GNOME source)")
+}
+
 // ---------- 工厂与注册 ----------
 
 type factory struct{ conn *dbus.Conn }
@@ -541,6 +695,8 @@ func main() {
 
 	call := conn.Object(ibusService, ibusPath).Call(
 		ibusService+".RegisterComponent", 0, component())
+
+	go startReconciler(conn)
 	if call.Err != nil {
 		log.Fatalf("RegisterComponent: %v", call.Err)
 	}
