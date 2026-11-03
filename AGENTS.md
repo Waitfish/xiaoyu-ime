@@ -35,6 +35,19 @@ macOS 本地编译 daemon：`PKG_CONFIG_PATH=/opt/homebrew/opt/librime/lib/pkgco
   （luna_pinyin 默认输出繁体）。
 - C++ 必须 `-std=c++20`（fcitx5 5.1 头文件用 std::span/starts_with）。
 
+## GNOME Wayland 事实（26.04 / Shell 50.1 实测）
+
+- GNOME 的 Wayland 输入法通道是 **IBus 专属**（gnome-shell `js/misc/inputMethod.js` 直连 IBus.Bus），
+  第三方 IME 拿不到 native protocol（fcitx5 自诊断 `Using Wayland native input method protocol: 0`）。
+- 正确路径 = **immodule 前端直连 fcitx5**：`~/.config/environment.d/fcitx5.conf` 写
+  `GTK_IM_MODULE=fcitx / QT_IM_MODULE=fcitx / XMODIFIERS=@im=fcitx`（需重新登录生效一次）。
+  生效后重启 fcitx5 应用自动重连（GTK immodule 监听 NameOwnerChanged），不必注销；
+  不设置时会话默认 ibus（走 fcitx5 ibusfrontend 冒充 IBus，重启即断，这就是"必须注销"的根因）。
+- 「建议安装 GNOME 扩展」通知 = fcitx5 wayland 插件诊断提示（ID `wayland-diagnose-gnome`，推荐 kimpanel），
+  隐藏：`~/.config/fcitx5/conf/notifications.conf` → `HiddenNotifications=wayland-diagnose-gnome`。
+- waylandim 插件禁不掉（classicui 硬依赖它），留着无害。
+- 重启用 `scripts/restart-fcitx5.sh`（SSH 下必须带 set -a eval 会话环境）。
+
 ## 里程碑状态
 
 M1 fcitx5 模块（真机打字验证通过，26.04 arm64）
