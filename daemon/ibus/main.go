@@ -534,8 +534,13 @@ func main() {
 	fmt.Println("xiaoyu-ime-ibus registered")
 
 	// ibus-daemon 退出 → 本引擎退出（ibus 下次会重新拉起）
-	const matchRule = "type='signal',sender='org.freedesktop.DBus',path='/org/freedesktop/DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged'"
-	if err := conn.SignalAdd(matchRule); err != nil {
+	err = conn.AddMatchSignal(
+		dbus.WithMatchSender("org.freedesktop.DBus"),
+		dbus.WithMatchObjectPath("/org/freedesktop/DBus"),
+		dbus.WithMatchInterface("org.freedesktop.DBus"),
+		dbus.WithMatchMember("NameOwnerChanged"),
+	)
+	if err != nil {
 		log.Println("addmatch:", err)
 	}
 	ch := make(chan *dbus.Signal, 16)
