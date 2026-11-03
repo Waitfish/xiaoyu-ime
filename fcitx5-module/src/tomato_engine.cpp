@@ -131,7 +131,7 @@ private:
         if (ctx.composition.preedit && ctx.composition.length > 0)
             comp.append(fcitx::Text::fromLegacy(ctx.composition.preedit));
 
-        auto cl = ic.userInterface()->candidateList();
+        auto &cl = ic.userInterface()->candidateList();
         cl->clear();
         if (ctx.menu.candidates && ctx.menu.num_candidates > 0) {
             const int page = ctx.menu.page_no;
