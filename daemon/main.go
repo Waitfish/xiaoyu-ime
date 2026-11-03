@@ -123,8 +123,12 @@ func loadConfig() config {
 }
 
 // applyConfig 在新会话上应用方案与默认状态。必须在持有 e.mu 时调用。
+// 注意：librime 的 select_schema 对"当前默认方案"返回 false 且会把会话置成
+// 无活动方案（按键直通失效）——默认方案（schema_list 第一项）跳过 select。
+const defaultSchema = "luna_pinyin_simp"
+
 func (e *engine) applyConfig(sid uint32) {
-	if !e.api.SelectSchema(sid, e.cfg.Schema) {
+	if e.cfg.Schema != defaultSchema && !e.api.SelectSchema(sid, e.cfg.Schema) {
 		fmt.Fprintln(os.Stderr, "select_schema failed:", e.cfg.Schema)
 	}
 	ascii := false
