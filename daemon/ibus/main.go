@@ -109,20 +109,22 @@ func (cl *client) call(req map[string]any) (keyResponse, error) {
 	if err := cl.enc.Encode(req); err != nil {
 		cl.c.Close()
 		cl.c = nil
+		cl.sess = 0 // 连接断了：下次 open 重建会话
 		return keyResponse{}, err
 	}
 	var resp keyResponse
 	if err := cl.dec.Decode(&resp); err != nil {
 		cl.c.Close()
 		cl.c = nil
+		cl.sess = 0
 		return keyResponse{}, err
 	}
 	return resp, nil
 }
 
-// open 懒创建会话（daemon 未就绪时下次按键再试）。
+// open 懒创建会话（daemon 未就绪时下次按键再试；连接断开后自动重建）。
 func (cl *client) open() error {
-	if cl.sess != 0 {
+	if cl.sess != 0 && cl.c != nil {
 		return nil
 	}
 	if err := cl.ensure(); err != nil {
@@ -533,7 +535,7 @@ func main() {
 
 	// ibus-daemon 退出 → 本引擎退出（ibus 下次会重新拉起）
 	const matchRule = "type='signal',sender='org.freedesktop.DBus',path='/org/freedesktop/DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged'"
-	if err := conn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, matchRule); err != nil {
+	if err := conn.SignalAdd(matchRule); err != nil {
 		log.Println("addmatch:", err)
 	}
 	ch := make(chan *dbus.Signal, 16)
