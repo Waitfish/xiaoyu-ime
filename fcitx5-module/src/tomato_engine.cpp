@@ -21,6 +21,8 @@
 #include <rime_api.h>
 
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <memory>
 #include <string>
@@ -110,16 +112,30 @@ private:
         return m;
     }
 
+    // 首次运行引导：默认简体拼音方案。注意 librime 会把缺 config_version 的用户配置移进 trash/
+    static void ensureUserConfig(const std::string &userDir) {
+        std::error_code ec;
+        std::filesystem::create_directories(userDir, ec);
+        const auto path = std::filesystem::path(userDir) / "default.yaml";
+        if (std::filesystem::exists(path))
+            return;
+        std::ofstream f(path);
+        f << "config_version: \"1.0\"\n"
+             "schema_list:\n"
+             "  - schema: luna_pinyin_simp\n";
+    }
+
     void initRime() {
         api_ = rime_get_api();
         if (!api_)
             return;
+        const char *home = getenv("HOME");
+        const std::string userDir = std::string(home ? home : ".") + "/.local/share/tomato-ime/rime";
+        ensureUserConfig(userDir);
         // 关键：api->setup() 不填 data_size；data_size 无效时 librime 忽略全部 traits 字段
         RimeTraits traits = {};
         traits.data_size = sizeof(traits);
         api_->setup(&traits);
-        const char *home = getenv("HOME");
-        const std::string userDir = std::string(home ? home : ".") + "/.local/share/tomato-ime/rime";
         traits.shared_data_dir = "/usr/share/rime-data";
         traits.user_data_dir = userDir.c_str();
         traits.app_name = "tomato-ime";
