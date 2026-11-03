@@ -553,27 +553,45 @@ func flattenStrings(v interface{}) []string {
 	return out
 }
 
-// currentSourceIsXiaoyu 解析 gsettings input-sources，判断当前激活源。
-func currentSourceIsXiaoyu() bool {
+// currentSource 解析 gsettings input-sources，返回当前激活源 (backend, id)。
+func currentSource() (string, string) {
 	out, err := exec.Command("gsettings", "get", "org.gnome.desktop.input-sources", "sources").Output()
 	if err != nil {
-		return false
+		return "", ""
 	}
 	re := regexp.MustCompile(`\('(xkb|ibus)',\s*'([^']+)'\)`)
 	all := re.FindAllStringSubmatch(string(out), -1)
 	if len(all) == 0 {
-		return false
+		return "", ""
 	}
 	outc, err := exec.Command("gsettings", "get", "org.gnome.desktop.input-sources", "current").Output()
 	if err != nil {
-		return false
+		return "", ""
 	}
 	idx := 0
 	fmt.Sscanf(strings.TrimSpace(string(outc)), "uint32 %d", &idx)
 	if idx < 0 || idx >= len(all) {
-		return false
+		return "", ""
 	}
-	return all[idx][1] == "ibus" && all[idx][2] == "xiaoyu"
+	return all[idx][1], all[idx][2]
+}
+
+// xkbEngineName 在 ibus 引擎表里找 xkb 布局对应的引擎名（如 ('xkb','us') → xkb:us::eng）。
+func xkbEngineName(ibusConn *dbus.Conn, layout string) string {
+	obj := ibusConn.Object("org.freedesktop.IBus", "/org/freedesktop/IBus")
+	var engines []interface{}
+	if err := obj.Call("org.freedesktop.IBus.ListEngines", 0).Store(&engines); err != nil {
+		return ""
+	}
+	prefix := "xkb:" + layout + ":"
+	for _, e := range engines {
+		if desc, ok := e.([]interface{}); ok && len(desc) > 2 {
+			if n, ok := desc[2].(string); ok && strings.HasPrefix(n, prefix) {
+				return n
+			}
+		}
+	}
+	return ""
 }
 
 func globalEngineName(ibusConn *dbus.Conn) string {
@@ -592,18 +610,33 @@ func globalEngineName(ibusConn *dbus.Conn) string {
 }
 
 func reconcile(sbus, ibusConn *dbus.Conn) {
-	if !currentSourceIsXiaoyu() {
+	backend, id := currentSource()
+	if backend == "" {
 		return
 	}
-	if globalEngineName(ibusConn) == "xiaoyu" {
+	want := ""
+	switch {
+	case backend == "ibus" && id == "xiaoyu":
+		want = "xiaoyu"
+	case backend == "xkb":
+		// GNOME 切到 xkb 源时不切 ibus 引擎（实测），若引擎还停在小鱼上，
+		// 用户切到 en 仍打中文。只对"引擎是我们"的情形纠偏，不干预第三方引擎。
+		if globalEngineName(ibusConn) != "xiaoyu" {
+			return
+		}
+		want = xkbEngineName(ibusConn, id)
+	default:
+		return
+	}
+	if want == "" || globalEngineName(ibusConn) == want {
 		return
 	}
 	obj := ibusConn.Object("org.freedesktop.IBus", "/org/freedesktop/IBus")
-	if call := obj.Call("org.freedesktop.IBus.SetGlobalEngine", 0, "xiaoyu"); call.Err != nil {
+	if call := obj.Call("org.freedesktop.IBus.SetGlobalEngine", 0, want); call.Err != nil {
 		log.Println("reconcile SetGlobalEngine:", call.Err)
 		return
 	}
-	log.Println("reconciled: ibus global engine -> xiaoyu (GNOME source)")
+	log.Println("reconciled: ibus global engine ->", want, "(GNOME source)")
 }
 
 // ---------- 工厂与注册 ----------
