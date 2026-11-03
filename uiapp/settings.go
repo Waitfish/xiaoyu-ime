@@ -36,6 +36,22 @@ var schemas = []struct{ id, label string }{
 	{"wubi86", "五笔"},
 }
 
+// uiLog 追加时间戳日志到 ~/.local/state/xiaoyu-ime/ui.log（菜单启动无 stderr 可看）。
+func uiLog(format string, args ...any) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	dir := home + "/.local/state/xiaoyu-ime"
+	_ = os.MkdirAll(dir, 0o755)
+	f, err := os.OpenFile(dir+"/ui.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%s %s\n", time.Now().Format("15:04:05.000"), fmt.Sprintf(format, args...))
+}
+
 func dialSocket() (net.Conn, error) {
 	return net.Dial("unix", socketPath())
 }
@@ -147,6 +163,10 @@ func runSettings() {
 	if strings.Contains(strings.ToLower(os.Getenv("XDG_CURRENT_DESKTOP")), "gnome") {
 		os.Setenv("GDK_BACKEND", "x11")
 	}
+	logStart := time.Now()
+	uiLog("start desktop=%q backend=%q DISPLAY=%q WAYLAND=%q",
+		os.Getenv("XDG_CURRENT_DESKTOP"), os.Getenv("GDK_BACKEND"),
+		os.Getenv("DISPLAY"), os.Getenv("WAYLAND_DISPLAY"))
 	s := &settingsUI{m: cfgModel{Schema: "luna_pinyin_simp", Simplification: true}}
 	if m, err := daemonCall(map[string]any{"op": "get_config"}); err == nil {
 		s.m = *m
@@ -154,12 +174,14 @@ func runSettings() {
 		s.status = "未连接守护进程（" + err.Error() + "），保存仍会写入配置文件"
 	}
 	mygo.App.WhenReady(func() {
+		uiLog("app ready in %v", time.Since(logStart))
 		mygo.NewWindow(mygo.WindowOptions{
 			Title:   "小鱼输入法设置",
 			Width:   430,
 			Height:  470,
 			Content: ui.View(s.view),
 		}).Show()
+		uiLog("window shown in %v", time.Since(logStart))
 	})
 	mygo.App.OnWindowAllClosed(func() { os.Exit(0) })
 	if err := mygo.App.Run(); err != nil {
