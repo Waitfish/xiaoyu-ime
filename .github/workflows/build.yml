@@ -18,7 +18,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential cmake pkg-config fcitx5-dev librime-dev rime-data
+            build-essential cmake pkg-config fcitx5-modules-dev librime-dev librime-data
       - uses: actions/setup-go@v5
         with:
           go-version-file: daemon/go.mod
