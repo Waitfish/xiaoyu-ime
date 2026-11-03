@@ -157,7 +157,11 @@ func (s *settingsUI) restartIME() {
 	_ = exec.Command("pkill", "-x", "xiaoyu-ime-ibus").Run() // 不在跑则非零，忽略
 	time.Sleep(1200 * time.Millisecond)
 	if gnomeSourceIsXiaoyu() {
-		_, err2 := exec.Command("ibus", "engine", "xiaoyu").CombinedOutput()
+		err2 := exec.Command("ibus", "engine", "xiaoyu").Run()
+		if err2 != nil {
+			time.Sleep(1 * time.Second) // 可能与 rime 部署撞车，重试一次
+			err2 = exec.Command("ibus", "engine", "xiaoyu").Run()
+		}
 		if err1 == nil && err2 == nil {
 			s.status = "已重启，直接打字即可"
 		} else {
