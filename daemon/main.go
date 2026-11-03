@@ -95,6 +95,7 @@ func ensureUserConfig(dir string) error {
 type engine struct {
 	mu       sync.Mutex
 	api      *rime.Api
+	ready    bool // rime 初始化完成（listen 先于 setup，open 在就绪前返回错误）
 	sessions map[uint32]uint32 // proto id -> rime session
 	cursors  map[uint32]cursor
 	nextID   uint32
@@ -144,6 +145,9 @@ func (e *engine) handle(req *request, conn net.Conn) response {
 		e.subMu.Unlock()
 		return response{}
 	case "open":
+		if !e.ready {
+			return response{Error: "rime not ready"}
+		}
 		sid := e.api.CreateSession()
 		if sid == 0 {
 			return response{Error: "create_session failed"}
@@ -231,12 +235,9 @@ func main() {
 	if err := ensureUserConfig(userDir); err != nil {
 		log.Fatalf("bootstrap user config: %v", err)
 	}
-	api, err := rime.Setup("/usr/share/rime-data", userDir, "tomato-ime")
-	if err != nil {
-		log.Fatalf("rime setup: %v", err)
-	}
-	defer api.Finalize()
 
+	// 先 listen 再做 rime 初始化：模块 activate 时能连上；
+	// 就绪前 open 返回错误，模块会在下一次按键时懒重试（见 tomato_engine.cpp）。
 	path := socketPath()
 	// 已有实例在跑则直接退出（模块会连上旧实例）
 	if _, err := os.Stat(path); err == nil {
@@ -255,7 +256,19 @@ func main() {
 	_ = os.Chmod(path, 0o600)
 	fmt.Fprintln(os.Stderr, "tomato-ime daemon listening on", path)
 
-	eng := &engine{api: api, sessions: map[uint32]uint32{}, cursors: map[uint32]cursor{}, subs: map[net.Conn]*json.Encoder{}}
+	eng := &engine{sessions: map[uint32]uint32{}, cursors: map[uint32]cursor{}, subs: map[net.Conn]*json.Encoder{}}
+
+	go func() {
+		api, err := rime.Setup("/usr/share/rime-data", userDir, "tomato-ime")
+		if err != nil {
+			log.Fatalf("rime setup: %v", err)
+		}
+		eng.mu.Lock()
+		eng.api = api
+		eng.ready = true
+		eng.mu.Unlock()
+		fmt.Fprintln(os.Stderr, "rime ready")
+	}()
 
 	spawnUI()
 

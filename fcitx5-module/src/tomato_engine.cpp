@@ -188,13 +188,22 @@ public:
 
     void keyEvent(const fcitx::InputMethodEntry &, fcitx::KeyEvent &keyEvent) override {
         auto *ic = keyEvent.inputContext();
-        auto it = sessions_.find(ic->uuid());
-        if (it == sessions_.end() || keyEvent.isRelease())
+        if (keyEvent.isRelease())
             return;
-
         const auto key = keyEvent.key();
         if (isModifier(key.sym()))
             return;
+
+        auto it = sessions_.find(ic->uuid());
+        if (it == sessions_.end()) {
+            // 懒建会话：activate 时 daemon 可能还在初始化，按键时重试补齐
+            if (!client_.ensureConnected())
+                return;
+            auto openResp = client_.call({{"op", "open"}});
+            if (openResp.is_null() || !openResp.contains("session"))
+                return;
+            it = sessions_.emplace(ic->uuid(), openResp["session"].get<uint32_t>()).first;
+        }
 
         auto resp = client_.call({{"op", "key"},
                                   {"session", it->second},
