@@ -9,7 +9,8 @@ Rules-Requires-Root: no
 
 Package: tomato-ime-fcitx5
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, rime-data-luna-pinyin, rime-prelude, rime-essay
+Depends: ${shlibs:Depends}, ${misc:Depends}, rime-data-luna-pinyin, rime-prelude, rime-essay,
+ libgtk-3-0t64 | libgtk-3-0
 Description: 番茄输入法（fcitx5 模块 + librime 引擎守护进程）
   fcitx5 前端模块 + tomato-ime-daemon 引擎守护进程（Go + librime），
   默认番茄拼音简体（luna_pinyin_simp）方案。

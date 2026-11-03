@@ -28,5 +28,7 @@ jobs:
         run: ./scripts/build.sh
       - name: Build daemon
         run: cd daemon && go vet ./... && go build ./...
+      - name: Build uiapp
+        run: cd uiapp && GOTOOLCHAIN=auto go vet -mod=vendor ./... && GOTOOLCHAIN=auto go build -mod=vendor ./...
       - name: Check rime data present
         run: ls /usr/share/rime-data/luna_pinyin.schema.yaml

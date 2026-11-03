@@ -16,8 +16,11 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
+	"syscall"
 
 	"tomato-ime/daemon/rime"
 )
@@ -197,6 +200,28 @@ func (e *engine) handle(req *request, conn net.Conn) response {
 	}
 }
 
+// spawnUI 拉起 MyGo 候选窗（继承本进程会话环境）。
+// GNOME Wayland 不支持 layer-shell，候选窗会退化成普通窗——跳过，
+// 让模块回退 fcitx5 内置面板（无订阅者时自动如此）。
+func spawnUI() {
+	if os.Getenv("XDG_SESSION_TYPE") == "wayland" &&
+		strings.Contains(os.Getenv("XDG_CURRENT_DESKTOP"), "GNOME") {
+		fmt.Fprintln(os.Stderr, "GNOME Wayland: 候选窗退化为普通窗，跳过 uiapp（用内置面板）")
+		return
+	}
+	for _, path := range []string{"/usr/libexec/tomato-ime-ui", "/usr/lib/tomato-ime/tomato-ime-ui"} {
+		if _, err := os.Stat(path); err == nil {
+			cmd := exec.Command(path)
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // 脱离 daemon 进程组
+			cmd.Stdout, cmd.Stderr = nil, nil
+			if err := cmd.Start(); err == nil {
+				fmt.Fprintln(os.Stderr, "spawned uiapp", path)
+			}
+			return
+		}
+	}
+}
+
 func main() {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -231,6 +256,8 @@ func main() {
 	fmt.Fprintln(os.Stderr, "tomato-ime daemon listening on", path)
 
 	eng := &engine{api: api, sessions: map[uint32]uint32{}, cursors: map[uint32]cursor{}, subs: map[net.Conn]*json.Encoder{}}
+
+	spawnUI()
 
 	for {
 		conn, err := ln.Accept()

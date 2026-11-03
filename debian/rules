@@ -5,10 +5,12 @@
 override_dh_auto_build-arch:
 	dh_auto_build
 	cd daemon && go build -buildvcs=false -o tomato-ime-daemon .
+	cd uiapp && GOTOOLCHAIN=auto GOPROXY=https://goproxy.cn,direct go build -mod=vendor -buildvcs=false -o tomato-ime-ui .
 
 override_dh_auto_install-arch:
 	dh_auto_install
 	install -D daemon/tomato-ime-daemon debian/tomato-ime-fcitx5/usr/libexec/tomato-ime-daemon
+	install -D uiapp/tomato-ime-ui debian/tomato-ime-fcitx5/usr/libexec/tomato-ime-ui
 
 # dwz 处理不了 Go 的 DWARF
 override_dh_dwz:
