@@ -78,17 +78,19 @@ func socketPath() string {
 	return filepath.Join(dir, "xiaoyu-ime.sock")
 }
 
-// ensureUserConfig 首次运行写入默认方案列表（全拼/小鹤双拼/五笔）。
+// ensureUserConfig 首次运行写入方案列表补丁（default.custom.yaml）。
+// 不能用精简 default.yaml：方案会 __include default:/key_binder 等节，
+// 精简版会让这些 config 构建失败（wubi86/pinyin_simp 报 error building config）。
 // 注意 librime 会把缺 config_version 的用户配置移进 trash/。
 func ensureUserConfig(dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	p := filepath.Join(dir, "default.yaml")
+	p := filepath.Join(dir, "default.custom.yaml")
 	if _, err := os.Stat(p); err == nil {
 		return nil
 	}
-	return os.WriteFile(p, []byte("config_version: \"1.0\"\nschema_list:\n  - schema: luna_pinyin_simp\n  - schema: double_pinyin_flypy\n  - schema: wubi86\n"), 0o600)
+	return os.WriteFile(p, []byte("patch:\n  schema_list:\n    - schema: luna_pinyin_simp\n    - schema: double_pinyin_flypy\n    - schema: wubi86\n"), 0o600)
 }
 
 // config 应用级配置（~/.config/xiaoyu-ime/config.json）：
