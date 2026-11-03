@@ -1,6 +1,8 @@
 # xiaoyu-ime 项目说明
 
-跨平台输入法（路线 C）。中文沟通。目标平台优先 Ubuntu 26.04（fcitx5）。
+跨平台输入法（路线 C）。中文沟通。目标平台优先 Ubuntu 26.04。
+**主路径 = IBus 引擎**（GNOME Wayland 原生）；fcitx5 模块为第二前端。
+包名 `xiaoyu-ime`（一个包装三个二进制：daemon / ibus 引擎 / uiapp 候选窗）。
 
 ## 构建命令
 
@@ -34,6 +36,32 @@ macOS 本地编译 daemon：`PKG_CONFIG_PATH=/opt/homebrew/opt/librime/lib/pkgco
 - 首次运行模块自动写 `~/.local/share/xiaoyu-ime/rime/default.yaml` 默认简体 `luna_pinyin_simp`
   （luna_pinyin 默认输出繁体）。
 - C++ 必须 `-std=c++20`（fcitx5 5.1 头文件用 std::span/starts_with）。
+
+## IBus 引擎事实（ibus 1.5.34 实测，协议=源码 serialize 字段序）
+
+- 引擎是**独立进程**：`/usr/share/ibus/component/xiaoyu.xml` 声明 ExecPath，ibus-daemon 拉起；
+  引擎连 **ibus 私有总线**（`~/.config/ibus/bus/<machineid>-unix-*` 文件里的 IBUS_ADDRESS，
+  不是会话总线！），导出 Factory(`/org/freedesktop/IBus/Factory`.CreateEngine(s)→(o))，
+  调 `org.freedesktop.IBus.RegisterComponent(v)`。
+- 序列化=定长元组：Component=(s"IBusComponent",a{sv},name,desc,version,license,author,homepage,exec,textdomain,av,av[EngineDesc])；
+  EngineDesc=(s,a{sv},name,longname,desc,language,license,author,icon,layout,u rank,hotkeys,symbol,setup,layout_variant,layout_option,version,textdomain,icon_prop_key)；
+  Text=(s,a{sv},s,v AttrList)；LookupTable=(s,a{sv},u page_size,u cursor_pos,b cursor_visible,b round,i orientation,av cands,av labels)。
+- **godbus 坑**：`[]interface{}` 编成 `av` 不是元组——必须用 Go struct（字段序=元组序）。
+- 1.5.34 信号是 variant 版：CommitText(v)、UpdatePreeditText(v,u,b,u mode)、UpdateLookupTable(v,b)；
+  方法 ProcessKeyEvent(u,u,u)→b、CandidateClicked(u,u,u)、PageUp/Down、CursorUp/Down(翻译成 keysym 0xff55/56/52/54)、
+  Reset/FocusIn/FocusOut、SetCapabilities；ContentType 是 D-Bus 属性（实现 Get/Set/GetAll）。
+- 引擎→daemon socket 协议与 fcitx5 模块相同；daemon 断连时 sess=0 重建；open 带重试（daemon 刚拉起时 rime 未就绪）。
+- IBus 面板始终显示候选（不看 ui_connected——那是 fcitx5 路径的事）。
+
+## 输入方案与默认状态配置
+
+- `~/.config/xiaoyu-ime/config.json`：`{"schema":"luna_pinyin_simp|double_pinyin_flypy|wubi86","ascii_mode":bool,"simplification":bool,"full_shape":bool}`；
+  daemon 每次 open 会话时应用（改后需重启 daemon）。
+- 方案列表用 `default.custom.yaml`（patch）写进 rime 用户目录——**不能**用精简 default.yaml
+  （方案 `__include default:/key_binder` 会失败）。
+- 小鹤双拼=rime 官方 `double_pinyin_flypy`（apt `rime-data-double-pinyin`）；五笔 `rime-data-wubi`。
+- **librime select_schema 对当前默认(schema_list 第一项)方案返回 false 且把会话弄成无活动方案**——默认方案跳过 select。
+- 简繁选项名因方案而异：luna_pinyin_simp=`zh_simp`，luna/double_pinyin=`simplification`——两个都设。
 
 ## GNOME Wayland 事实（26.04 / Shell 50.1 实测）
 
