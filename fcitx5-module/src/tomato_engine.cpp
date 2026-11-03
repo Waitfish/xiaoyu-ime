@@ -2,9 +2,11 @@
 //
 // 架构（见 docs/architecture.md）：本模块是永久存在的"平台薄壳"，
 // M2 会把引擎换成 Go 守护进程（daemon/），本文件只剩按键转发与 UI 同步。
-#include <fcitx/action.h>
+//
+// 对照 fcitx5 5.1.7（Ubuntu 24.04/26.04）真实 API：
+//   activate/deactivate/reset 收 InputContextEvent&；
+//   会话按 InputContext::uuid() 保存；KeyEvent 用 isRelease()/filterAndAccept()。
 #include <fcitx/addonfactory.h>
-#include <fcitx/addoninstance.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputmethodengine.h>
 #include <fcitx/inputmethodentry.h>
@@ -14,9 +16,9 @@
 #include <rime_api.h>
 
 #include <cstdlib>
+#include <map>
 #include <memory>
 #include <string>
-#include <unordered_map>
 
 namespace {
 
@@ -28,15 +30,15 @@ public:
             api_->finalize();
     }
 
-    void activate(const fcitx::InputMethodEntry &, fcitx::InputContext &ic) override {
+    void activate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override {
         if (!api_)
             return;
         if (RimeSessionId sid = api_->create_session())
-            sessions_[ic.uniqueID()] = sid;
+            sessions_[event.inputContext().uuid()] = sid;
     }
 
-    void deactivate(const fcitx::InputMethodEntry &, fcitx::InputContext &ic) override {
-        auto it = sessions_.find(ic.uniqueID());
+    void deactivate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override {
+        auto it = sessions_.find(event.inputContext().uuid());
         if (it == sessions_.end())
             return;
         if (api_)
@@ -44,31 +46,32 @@ public:
         sessions_.erase(it);
     }
 
-    void reset(const fcitx::InputMethodEntry &, fcitx::InputContext &ic) override {
-        auto it = sessions_.find(ic.uniqueID());
+    void reset(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override {
+        auto it = sessions_.find(event.inputContext().uuid());
         if (it != sessions_.end() && api_)
             api_->clear_composition(it->second);
     }
 
     void keyEvent(const fcitx::InputMethodEntry &, fcitx::KeyEvent &keyEvent) override {
         auto &ic = keyEvent.inputContext();
-        auto it = sessions_.find(ic.uniqueID());
-        if (it == sessions_.end() || !api_)
+        auto it = sessions_.find(ic.uuid());
+        if (it == sessions_.end() || !api_ || keyEvent.isRelease())
             return;
 
-        const auto &key = keyEvent.key();
-        if (keyEvent.keyType() != fcitx::KeyEventType::KeyPress || isModifier(key.sym()))
+        const auto key = keyEvent.key();
+        if (isModifier(key.sym()))
             return;
 
         const bool handled =
-            api_->process_key(it->second, static_cast<int>(key.sym()), rimeModifiers(key));        pollCommit(ic, it->second);
+            api_->process_key(it->second, static_cast<int>(key.sym()), rimeModifiers(key));
+        pollCommit(ic, it->second);
         updateUI(ic, it->second);
         if (handled)
-            keyEvent.accept();
+            keyEvent.filterAndAccept();
     }
 
 private:
-    static bool isModifier(fcitx::Key sym) {
+    static bool isModifier(fcitx::KeySym sym) {
         switch (sym) {
         case FcitxKey_Shift_L:
         case FcitxKey_Shift_R:
@@ -145,8 +148,7 @@ private:
             }
             cl->setPageSize(pageSize);
             // RimeMenu 只有 is_last_page：总页数按当前页推算
-            const int totalPages =
-                ctx.menu.is_last_page ? page + 1 : page + 2;
+            const int totalPages = ctx.menu.is_last_page ? page + 1 : page + 2;
             cl->setTotalCount(pageSize * totalPages);
             cl->setCursorIndex(page * pageSize + ctx.menu.highlighted_candidate_index);
         } else {
@@ -156,7 +158,7 @@ private:
     }
 
     RimeApi *api_ = nullptr;
-    std::unordered_map<uint64_t, RimeSessionId> sessions_;
+    std::map<fcitx::ICUUID, RimeSessionId> sessions_;
 };
 
 class TomatoModule : public fcitx::Addon {
