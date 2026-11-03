@@ -113,7 +113,7 @@ func (a *Api) SelectSchema(sid uint32, id string) bool {
 func (a *Api) SetOption(sid uint32, name string, value bool) {
 	c := C.CString(name)
 	defer C.free(unsafe.Pointer(c))
-	v := C.False
+	var v C.Bool = C.False
 	if value {
 		v = C.True
 	}
