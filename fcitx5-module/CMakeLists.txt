@@ -23,3 +23,11 @@ if(NOT Fcitx5_INSTALL_ADDON_DIR)
 endif()
 message(STATUS "addon install dir: ${Fcitx5_INSTALL_ADDON_DIR}")
 install(TARGETS tomato-ime LIBRARY DESTINATION ${Fcitx5_INSTALL_ADDON_DIR})
+
+# addon 元数据与 IM 条目（fcitx5 从 <datadir>/fcitx5/{addon,inputmethod}/ 读取）
+if(NOT FCITX_INSTALL_PKGDATADIR)
+  set(FCITX_INSTALL_PKGDATADIR "${CMAKE_INSTALL_FULL_DATADIR}/fcitx5")
+endif()
+install(FILES data/tomato.conf DESTINATION ${FCITX_INSTALL_PKGDATADIR}/addon)
+install(FILES data/inputmethod.tomato.conf DESTINATION ${FCITX_INSTALL_PKGDATADIR}/inputmethod
+        RENAME tomato.conf)

@@ -3,14 +3,19 @@
 // 架构（见 docs/architecture.md）：本模块是永久存在的"平台薄壳"，
 // M2 会把引擎换成 Go 守护进程（daemon/），本文件只剩按键转发与 UI 同步。
 //
-// 对照 fcitx5 5.1.7（Ubuntu 24.04/26.04）真实 API：
-//   activate/deactivate/reset 收 InputContextEvent&；
-//   会话按 InputContext::uuid() 保存；KeyEvent 用 isRelease()/filterAndAccept()。
+// 按 fcitx5 5.1.7（Ubuntu 24.04/26.04）真实头文件编写：
+//   引擎 = InputMethodEngineV2（本身就是 AddonInstance），工厂 create(AddonManager*)；
+//   activate/deactivate/reset 收 InputContextEvent&，inputContext() 返回指针；
+//   UI 走 InputContext::inputPanel()（setPreedit / setCandidateList(DisplayOnlyCandidateList)）
+//   + updateUserInterface；提交用 commitString()；
+//   IM 条目由 /usr/share/fcitx5/inputmethod/tomato.conf 声明。
 #include <fcitx/addonfactory.h>
+#include <fcitx/addoninstance.h>
+#include <fcitx/candidatelist.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputmethodengine.h>
 #include <fcitx/inputmethodentry.h>
-#include <fcitx/instance.h>
+#include <fcitx/inputpanel.h>
 #include <fcitx/text.h>
 #include <fcitx/userinterface.h>
 #include <rime_api.h>
@@ -19,6 +24,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -125,7 +131,7 @@ private:
     void pollCommit(fcitx::InputContext &ic, RimeSessionId sid) {
         RIME_STRUCT(RimeCommit, commit);
         if (api_->get_commit(sid, &commit)) {
-            ic.commit(commit.text);
+            ic.commitString(commit.text);
             api_->free_commit(&commit);
         }
     }
@@ -134,31 +140,31 @@ private:
         RIME_STRUCT(RimeContext, ctx);
         api_->get_context(sid, &ctx);
 
-        auto &comp = *ic.inputMethod()->composition();
-        comp.clear();
-        if (ctx.composition.preedit && ctx.composition.length > 0)
-            comp.append(fcitx::Text::fromLegacy(ctx.composition.preedit));
+        auto &panel = ic.inputPanel();
 
-        auto &cl = ic.userInterface()->candidateList();
-        cl->clear();
+        fcitx::Text preedit;
+        if (ctx.composition.preedit && ctx.composition.length > 0)
+            preedit.append(ctx.composition.preedit);
+        panel.setPreedit(preedit);
+
         if (ctx.menu.candidates && ctx.menu.num_candidates > 0) {
-            const int page = ctx.menu.page_no;
-            const int pageSize = ctx.menu.page_size > 0 ? ctx.menu.page_size : 5;
+            auto cl = std::make_unique<fcitx::DisplayOnlyCandidateList>();
+            std::vector<fcitx::Text> contents;
             for (size_t i = 0; i < ctx.menu.num_candidates; ++i) {
                 const auto &cand = ctx.menu.candidates[i];
-                auto text = fcitx::Text::fromLegacy(cand.text);
+                fcitx::Text text(cand.text);
                 if (cand.comment && *cand.comment)
-                    text.append(fcitx::Text(" " + std::string(cand.comment)));
-                cl->append(std::move(text));
+                    text.append(" " + std::string(cand.comment));
+                contents.push_back(std::move(text));
             }
-            cl->setPageSize(pageSize);
-            // RimeMenu 只有 is_last_page：总页数按当前页推算
-            const int totalPages = ctx.menu.is_last_page ? page + 1 : page + 2;
-            cl->setTotalCount(pageSize * totalPages);
-            cl->setCursorIndex(page * pageSize + ctx.menu.highlighted_candidate_index);
+            cl->setContent(std::move(contents));
+            cl->setCursorIndex(ctx.menu.highlighted_candidate_index);
+            panel.setCandidateList(std::move(cl));
         } else {
-            cl->setCursorIndex(-1);
+            panel.setCandidateList(nullptr);
         }
+
+        ic.updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
         api_->free_context(&ctx);
     }
 
@@ -166,26 +172,9 @@ private:
     std::map<fcitx::ICUUID, RimeSessionId> sessions_;
 };
 
-class TomatoModule : public fcitx::Addon {
-public:
-    TomatoModule(fcitx::Instance *instance) {
-        fcitx::InputMethodEntry entry;
-        entry.setName("tomato");
-        entry.setLongname("番茄拼音");
-        entry.setShortname("番茄");
-        entry.setDescription("番茄输入法：librime 引擎，番茄拼音方案");
-        entry.setLanguage("zh_CN");
-        engine_ = std::make_unique<TomatoEngine>();
-        instance->inputMethodEngine()->registerEngine(std::move(entry), engine_.get());
-    }
-
-private:
-    std::unique_ptr<TomatoEngine> engine_;
-};
-
 class TomatoModuleFactory : public fcitx::AddonFactory {
-    fcitx::Addon *create(fcitx::Instance *instance) override {
-        return new TomatoModule(instance);
+    fcitx::AddonInstance *create(fcitx::AddonManager *) override {
+        return new TomatoEngine();
     }
 };
 
