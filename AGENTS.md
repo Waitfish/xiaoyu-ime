@@ -67,7 +67,6 @@ macOS 本地编译 daemon：`PKG_CONFIG_PATH=/opt/homebrew/opt/librime/lib/pkgco
   select_schema（含默认方案），否则会话停在上次持久化的方案（拼音出五笔乱码候选）。
 - 简繁选项名因方案而异：luna_pinyin_simp=`zh_simp`，luna/double_pinyin=`simplification`——两个都设。
 - daemon 启动后建一个牺牲会话预热（key+applyConfig+destroy），吸收首会话惰性并把 user.yaml 方案落到配置值。
-  daemon 启动后先建一个牺牲会话（key+destroy），真实会话从第二个起正常。
 - daemon 单例必须 flock（stat+dial 有竞态：双实例互抢 socket → 双 librime 共目录 → 部署损坏全直通）。
 - 引擎启动即 spawnDaemon 预热 + open() 重试 ~10s：否则用户切换输入法后头几秒按键全直通英文。
 - pkill 陷阱：`pkill -f PATTERN` 会匹配到含 PATTERN 的自己命令行；用字符类 `xiaoyu[-]ime` 规避；
