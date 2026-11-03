@@ -251,8 +251,8 @@ private:
         const auto rect = ic.cursorRect();
         client_.call({{"op", "ui"},
                       {"session", session},
-                      {"x", rect.x()},
-                      {"y", rect.y()},
+                      {"x", rect.left()},
+                      {"y", rect.top()},
                       {"w", rect.width()},
                       {"h", rect.height()},
                       {"scale", ic.scaleFactor()}});
