@@ -80,37 +80,37 @@ func Setup(sharedDataDir, userDataDir, appName string) (*Api, error) {
 
 func (a *Api) Finalize() { C.tr_finalize(a.p) }
 
-func (a *Api) CreateSession() uint32 {
-	return uint32(C.tr_create_session(a.p))
+func (a *Api) CreateSession() uint64 {
+	return uint64(C.tr_create_session(a.p))
 }
 
-func (a *Api) DestroySession(sid uint32) {
+func (a *Api) DestroySession(sid uint64) {
 	C.tr_destroy_session(a.p, C.RimeSessionId(sid))
 }
 
-func (a *Api) ClearComposition(sid uint32) {
+func (a *Api) ClearComposition(sid uint64) {
 	C.tr_clear_composition(a.p, C.RimeSessionId(sid))
 }
 
 // SelectCandidate 按当前页内 0 基下标选中候选（候选窗鼠标点击用）。
-func (a *Api) SelectCandidate(sid uint32, index int) bool {
+func (a *Api) SelectCandidate(sid uint64, index int) bool {
 	return C.tr_select_candidate(a.p, C.RimeSessionId(sid), C.size_t(index)) == C.True
 }
 
 // ProcessKey 送入一个 X keysym + Rime 修饰掩码，返回是否被引擎消费。
-func (a *Api) ProcessKey(sid uint32, keysym int, mods uint) bool {
+func (a *Api) ProcessKey(sid uint64, keysym int, mods uint) bool {
 	return C.tr_process_key(a.p, C.RimeSessionId(sid), C.int(keysym), C.int(mods)) == C.True
 }
 
 // SelectSchema 切换输入方案（须已在 schema_list 中）。
-func (a *Api) SelectSchema(sid uint32, id string) bool {
+func (a *Api) SelectSchema(sid uint64, id string) bool {
 	c := C.CString(id)
 	defer C.free(unsafe.Pointer(c))
 	return C.tr_select_schema(a.p, C.RimeSessionId(sid), c) == C.True
 }
 
 // SetOption 设置会话选项（ascii_mode / full_shape / simplification 等）。
-func (a *Api) SetOption(sid uint32, name string, value bool) {
+func (a *Api) SetOption(sid uint64, name string, value bool) {
 	c := C.CString(name)
 	defer C.free(unsafe.Pointer(c))
 	var v C.Bool = C.False
@@ -120,7 +120,7 @@ func (a *Api) SetOption(sid uint32, name string, value bool) {
 	C.tr_set_option(a.p, C.RimeSessionId(sid), c, v)
 }
 
-func (a *Api) CommitText(sid uint32) string {
+func (a *Api) CommitText(sid uint64) string {
 	var commit C.RimeCommit
 	commit.data_size = C.int(unsafe.Sizeof(commit))
 	if C.tr_get_commit(a.p, C.RimeSessionId(sid), &commit) != C.True {
@@ -131,7 +131,7 @@ func (a *Api) CommitText(sid uint32) string {
 	return text
 }
 
-func (a *Api) GetContext(sid uint32) Context {
+func (a *Api) GetContext(sid uint64) Context {
 	var ctx C.RimeContext
 	ctx.data_size = C.int(unsafe.Sizeof(ctx))
 	C.tr_get_context(a.p, C.RimeSessionId(sid), &ctx)

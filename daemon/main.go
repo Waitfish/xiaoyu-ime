@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"xiaoyu-ime/daemon/rime"
 )
@@ -123,13 +124,22 @@ func loadConfig() config {
 }
 
 // applyConfig 在新会话上应用方案与默认状态。必须在持有 e.mu 时调用。
-// 注意：librime 的 select_schema 对"当前默认方案"返回 false 且会把会话置成
-// 无活动方案（按键直通失效）——默认方案（schema_list 第一项）跳过 select。
-const defaultSchema = "luna_pinyin_simp"
+// 必须无条件 select_schema：librime 在 user.yaml 持久化 previously_selected_schema，
+// 跳过会让会话停在上次选的方案上（默认方案也不例外）。
+// （历史上这里曾"默认方案跳过 select"，是为绕 RimeSessionId 被 uint32 截断
+// 导致 GetSession 失败的假象——见 rime.go 的 uint64 修复。）
 
-func (e *engine) applyConfig(sid uint32) {
-	if e.cfg.Schema != defaultSchema && !e.api.SelectSchema(sid, e.cfg.Schema) {
-		fmt.Fprintln(os.Stderr, "select_schema failed:", e.cfg.Schema)
+func (e *engine) applyConfig(sid uint64) {
+	// 部署刚结束时 select_schema 可能失败（schema 尚未注册完成），重试等待
+	ok := false
+	for i := 0; i < 10 && !ok; i++ {
+		ok = e.api.SelectSchema(sid, e.cfg.Schema)
+		if !ok {
+			time.Sleep(300 * time.Millisecond)
+		}
+	}
+	if !ok {
+		fmt.Fprintln(os.Stderr, "select_schema failed:", e.cfg.Schema, sid)
 	}
 	ascii := false
 	if e.cfg.AsciiMode != nil {
@@ -157,7 +167,7 @@ type engine struct {
 	api      *rime.Api
 	ready    bool // rime 初始化完成（listen 先于 setup，open 在就绪前返回错误）
 	cfg      config
-	sessions map[uint32]uint32 // proto id -> rime session
+	sessions map[uint32]uint64 // proto id -> rime session
 	cursors  map[uint32]cursor
 	nextID   uint32
 	subs     map[net.Conn]*json.Encoder
@@ -321,7 +331,7 @@ func main() {
 	_ = os.Chmod(path, 0o600)
 	fmt.Fprintln(os.Stderr, "xiaoyu-ime daemon listening on", path)
 
-	eng := &engine{sessions: map[uint32]uint32{}, cursors: map[uint32]cursor{}, subs: map[net.Conn]*json.Encoder{}, cfg: loadConfig()}
+	eng := &engine{sessions: map[uint32]uint64{}, cursors: map[uint32]cursor{}, subs: map[net.Conn]*json.Encoder{}, cfg: loadConfig()}
 
 	go func() {
 		api, err := rime.Setup("/usr/share/rime-data", userDir, "xiaoyu-ime")
@@ -336,6 +346,9 @@ func main() {
 		// 初始化被首个会话吸收）。创建一个牺牲会话预热，真实会话从第二个起正常。
 		if sid := api.CreateSession(); sid != 0 {
 			api.ProcessKey(sid, 0x20, 0)
+			eng.mu.Lock()
+			eng.applyConfig(sid) // 把 select_schema/set_option 的首会话惰性也吸收掉
+			eng.mu.Unlock()
 			api.DestroySession(sid)
 		}
 		fmt.Fprintln(os.Stderr, "rime ready")
