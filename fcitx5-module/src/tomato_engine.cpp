@@ -205,7 +205,10 @@ public:
 
         if (resp.contains("commit"))
             ic->commitString(resp["commit"].get<std::string>());
-        updateUI(*ic, resp);
+        // M3：MyGo 候选窗在线时由它接管显示，内置面板清空
+        const bool customUI = resp.value("ui_connected", false);
+        updateUI(*ic, resp, customUI);
+        sendCursor(*ic, it->second);
         if (resp.value("handled", false))
             keyEvent.filterAndAccept();
     }
@@ -244,8 +247,26 @@ private:
         return m;
     }
 
-    static void updateUI(fcitx::InputContext &ic, const json &resp) {
+    void sendCursor(fcitx::InputContext &ic, uint32_t session) {
+        const auto rect = ic.cursorRect();
+        client_.call({{"op", "ui"},
+                      {"session", session},
+                      {"x", rect.x()},
+                      {"y", rect.y()},
+                      {"w", rect.width()},
+                      {"h", rect.height()},
+                      {"scale", ic.scaleFactor()}});
+    }
+
+    static void updateUI(fcitx::InputContext &ic, const json &resp, bool suppress) {
         auto &panel = ic.inputPanel();
+
+        if (suppress) { // 候选窗接管：清空内置面板
+            panel.setPreedit(fcitx::Text());
+            panel.setCandidateList(nullptr);
+            ic.updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+            return;
+        }
 
         fcitx::Text preedit;
         if (resp.contains("preedit"))

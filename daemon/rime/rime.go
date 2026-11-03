@@ -15,6 +15,9 @@ static void tr_start_maintenance(RimeApi* a, Bool foreground) { a->start_mainten
 static RimeSessionId tr_create_session(RimeApi* a) { return a->create_session(); }
 static void tr_destroy_session(RimeApi* a, RimeSessionId s) { a->destroy_session(s); }
 static void tr_clear_composition(RimeApi* a, RimeSessionId s) { a->clear_composition(s); }
+static Bool tr_select_candidate(RimeApi* a, RimeSessionId s, size_t i) {
+	return a->select_candidate(s, i);
+}
 static Bool tr_process_key(RimeApi* a, RimeSessionId s, int k, int m) {
 	return a->process_key(s, k, m);
 }
@@ -81,6 +84,11 @@ func (a *Api) DestroySession(sid uint32) {
 
 func (a *Api) ClearComposition(sid uint32) {
 	C.tr_clear_composition(a.p, C.RimeSessionId(sid))
+}
+
+// SelectCandidate 按当前页内 0 基下标选中候选（候选窗鼠标点击用）。
+func (a *Api) SelectCandidate(sid uint32, index int) bool {
+	return C.tr_select_candidate(a.p, C.RimeSessionId(sid), C.size_t(index)) == C.True
 }
 
 // ProcessKey 送入一个 X keysym + Rime 修饰掩码，返回是否被引擎消费。
