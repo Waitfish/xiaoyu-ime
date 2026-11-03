@@ -140,15 +140,80 @@ func (cl *client) open() error {
 }
 
 // ---------- IBus 序列化（字段顺序 = ibus 1.5.34 serialize 源码） ----------
+// godbus 把 Go struct 按字段顺序编码为 D-Bus 元组（[]interface{} 会编成 av，不可用）。
 
-func props() map[string]dbus.Variant { return map[string]dbus.Variant{} }
+type ibusProps = map[string]dbus.Variant
+
+type attrListT struct {
+	Type  string
+	Props ibusProps
+	Attrs []dbus.Variant
+}
+
+type textT struct {
+	Type  string
+	Props ibusProps
+	Text  string
+	Attrs dbus.Variant
+}
+
+type lookupTableT struct {
+	Type          string
+	Props         ibusProps
+	PageSize      uint32
+	CursorPos     uint32
+	CursorVisible bool
+	Round         bool
+	Orientation   int32
+	Candidates    []dbus.Variant
+	Labels        []dbus.Variant
+}
+
+type engineDescT struct {
+	Type           string
+	Props          ibusProps
+	Name           string
+	LongName       string
+	Description    string
+	Language       string
+	License        string
+	Author         string
+	Icon           string
+	Layout         string
+	Rank           uint32
+	Hotkeys        string
+	Symbol         string
+	Setup          string
+	LayoutVariant  string
+	LayoutOption   string
+	Version        string
+	Textdomain     string
+	IconPropKey    string
+}
+
+type componentT struct {
+	Type     string
+	Props    ibusProps
+	Name     string
+	Description string
+	Version  string
+	License  string
+	Author   string
+	Homepage string
+	Exec     string
+	Textdomain string
+	Observed []dbus.Variant
+	Engines  []dbus.Variant
+}
+
+func props() ibusProps { return ibusProps{} }
 
 func attrList() dbus.Variant {
-	return dbus.MakeVariant([]interface{}{"IBusAttrList", props(), []dbus.Variant{}})
+	return dbus.MakeVariant(attrListT{"IBusAttrList", props(), []dbus.Variant{}})
 }
 
 func ibusText(s string) dbus.Variant {
-	return dbus.MakeVariant([]interface{}{"IBusText", props(), s, attrList()})
+	return dbus.MakeVariant(textT{"IBusText", props(), s, attrList()})
 }
 
 func lookupTable(pageSize, cursorPos int, cands, labels []string) dbus.Variant {
@@ -160,7 +225,7 @@ func lookupTable(pageSize, cursorPos int, cands, labels []string) dbus.Variant {
 	for _, l := range labels {
 		lv = append(lv, ibusText(l))
 	}
-	return dbus.MakeVariant([]interface{}{
+	return dbus.MakeVariant(lookupTableT{
 		"IBusLookupTable", props(),
 		uint32(pageSize), uint32(cursorPos), true, false, int32(0),
 		cv, lv,
@@ -168,7 +233,7 @@ func lookupTable(pageSize, cursorPos int, cands, labels []string) dbus.Variant {
 }
 
 func engineDesc() dbus.Variant {
-	return dbus.MakeVariant([]interface{}{
+	return dbus.MakeVariant(engineDescT{
 		"IBusEngineDesc", props(),
 		"xiaoyu",              // name
 		"小鱼输入法",            // longname
@@ -191,7 +256,7 @@ func engineDesc() dbus.Variant {
 }
 
 func component() dbus.Variant {
-	return dbus.MakeVariant([]interface{}{
+	return dbus.MakeVariant(componentT{
 		"IBusComponent", props(),
 		"xiaoyu", "小鱼输入法（Rime 引擎）", engineVersion,
 		"GPL-3.0-or-later", "Waitfish",
