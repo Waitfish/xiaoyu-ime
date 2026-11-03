@@ -83,28 +83,61 @@ func socketPath() string {
 	return filepath.Join(dir, "xiaoyu-ime.sock")
 }
 
-// ensureUserConfig 首次运行写入方案列表补丁（default.custom.yaml）。
-// 不能用精简 default.yaml：方案会 __include default:/key_binder 等节，
-// 精简版会让这些 config 构建失败（wubi86/pinyin_simp 报 error building config）。
-// 注意 librime 会把缺 config_version 的用户配置移进 trash/。
-func ensureUserConfig(dir string) error {
+// writeUserConfig 写方案列表 + menu/page_size 补丁（default.custom.yaml），
+// 内容一致时跳过；rime 通过 start_maintenance 重新部署生效。
+func writeUserConfig(dir string, pageSize int) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	if pageSize < 2 || pageSize > 9 {
+		pageSize = 5
+	}
 	p := filepath.Join(dir, "default.custom.yaml")
-	if _, err := os.Stat(p); err == nil {
+	want := fmt.Sprintf("patch:\n  menu/page_size: %d\n  schema_list:\n    - schema: luna_pinyin_simp\n    - schema: double_pinyin_flypy\n    - schema: wubi86\n", pageSize)
+	if cur, err := os.ReadFile(p); err == nil && string(cur) == want {
 		return nil
 	}
-	return os.WriteFile(p, []byte("patch:\n  schema_list:\n    - schema: luna_pinyin_simp\n    - schema: double_pinyin_flypy\n    - schema: wubi86\n"), 0o600)
+	return os.WriteFile(p, []byte(want), 0o600)
 }
 
 // config 应用级配置（~/.config/xiaoyu-ime/config.json）：
 // 输入方案 + 默认输入状态。设置程序（后续）写它，daemon 每次 open 会话时应用。
+// appearance 候选窗外观（作用于我们的 MyGo 候选窗；page_size 同时写 rime
+// 补丁，对 IBus 面板也生效）。
+type appearance struct {
+	Orientation string `json:"orientation"` // horizontal | vertical
+	Font        string `json:"font"`        // 字体族，"" = 系统默认
+	FontSize    int    `json:"font_size"`   // 候选字号
+	PageSize    int    `json:"page_size"`   // 每页候选个数
+	Style       string `json:"style"`       // scroll(卷轴) | single(单行) | scale(跟随字体缩放)
+}
+
+func defaultAppearance() appearance {
+	return appearance{Orientation: "horizontal", Font: "", FontSize: 18, PageSize: 5, Style: "scroll"}
+}
+
+func (a *appearance) normalize() {
+	d := defaultAppearance()
+	if a.Orientation != "horizontal" && a.Orientation != "vertical" {
+		a.Orientation = d.Orientation
+	}
+	if a.Style != "scroll" && a.Style != "single" && a.Style != "scale" {
+		a.Style = d.Style
+	}
+	if a.FontSize < 12 || a.FontSize > 40 {
+		a.FontSize = d.FontSize
+	}
+	if a.PageSize < 2 || a.PageSize > 9 {
+		a.PageSize = d.PageSize
+	}
+}
+
 type config struct {
-	Schema         string `json:"schema"`          // luna_pinyin_simp | double_pinyin_flypy | wubi86
-	AsciiMode      *bool  `json:"ascii_mode"`      // 默认中文(false)
-	Simplification *bool  `json:"simplification"`  // 默认简体(true)
-	FullShape      *bool  `json:"full_shape"`      // 默认半角(false)
+	Schema         string     `json:"schema"`          // luna_pinyin_simp | double_pinyin_flypy | wubi86
+	AsciiMode      *bool      `json:"ascii_mode"`      // 默认中文(false)
+	Simplification *bool      `json:"simplification"`  // 默认简体(true)
+	FullShape      *bool      `json:"full_shape"`      // 默认半角(false)
+	Appearance     appearance `json:"appearance"`
 }
 
 var allowedSchemas = map[string]bool{
@@ -134,12 +167,16 @@ func persistConfig(cfg config) error {
 }
 
 func loadConfig() config {
-	cfg := config{Schema: "luna_pinyin_simp"}
+	cfg := config{Schema: "luna_pinyin_simp", Appearance: defaultAppearance()}
 	if path, err := configPath(); err == nil {
 		if b, err := os.ReadFile(path); err == nil {
 			_ = json.Unmarshal(b, &cfg)
 		}
 	}
+	if cfg.Appearance.Orientation == "" && cfg.Appearance.Style == "" && cfg.Appearance.FontSize == 0 {
+		cfg.Appearance = defaultAppearance()
+	}
+	cfg.Appearance.normalize()
 	if !allowedSchemas[cfg.Schema] {
 		cfg.Schema = "luna_pinyin_simp"
 	}
@@ -188,6 +225,7 @@ func (e *engine) applyConfig(sid uint64) {
 type engine struct {
 	mu       sync.Mutex
 	api      *rime.Api
+	rimeDir  string // rime 用户目录（写 page_size 补丁用）
 	ready    bool // rime 初始化完成（listen 先于 setup，open 在就绪前返回错误）
 	cfg      config
 	sessions map[uint32]uint64 // proto id -> rime session
@@ -204,6 +242,15 @@ func (e *engine) uiConnected() bool {
 }
 
 // broadcast 必须在持有 e.mu 时调用（读 rime 状态）。
+// broadcastConfig 通知订阅者（候选窗）配置已变，需重取外观。
+func (e *engine) broadcastConfig() {
+	e.subMu.Lock()
+	defer e.subMu.Unlock()
+	for _, enc := range e.subs {
+		_ = enc.Encode(map[string]any{"type": "config"})
+	}
+}
+
 func (e *engine) broadcast(sess uint32, ctx rime.Context) {
 	e.subMu.Lock()
 	defer e.subMu.Unlock()
@@ -275,15 +322,26 @@ func (e *engine) handle(req *request, conn net.Conn) response {
 		if !allowedSchemas[nc.Schema] {
 			return response{Error: "unknown schema: " + nc.Schema}
 		}
+		nc.Appearance.normalize()
+		pageChanged := nc.Appearance.PageSize != e.cfg.Appearance.PageSize
 		e.cfg = nc
 		for _, sid := range e.sessions {
 			e.applyConfig(sid) // 立即作用到所有在线会话
+		}
+		if pageChanged {
+			// menu/page_size 写进 rime 用户补丁并触发重新部署：对 IBus 面板同样生效
+			if err := writeUserConfig(e.rimeDir, nc.Appearance.PageSize); err != nil {
+				fmt.Fprintln(os.Stderr, "write user config:", err)
+			} else {
+				e.api.StartMaintenance(false)
+			}
 		}
 		go func(c config) {
 			if err := persistConfig(c); err != nil {
 				fmt.Fprintln(os.Stderr, "persist config:", err)
 			}
 		}(nc)
+		e.broadcastConfig() // 候选窗收到后热更新外观（无需重启进程）
 		return response{Config: &nc}
 	case "ui": // 模块上报光标位置
 		e.cursors[req.Session] = cursor{req.X, req.Y, req.W, req.H, req.Scale}
@@ -341,6 +399,11 @@ func gnomeSession() bool {
 // spawnUI 拉起 MyGo 候选窗（继承本进程会话环境）。
 // GNOME Wayland 不支持 layer-shell，候选窗会退化成普通窗——跳过，
 // 让模块回退 fcitx5 内置面板（无订阅者时自动如此）。
+var (
+	uiappMu  sync.Mutex
+	uiappCmd *exec.Cmd
+)
+
 func spawnUI() {
 	if gnomeSession() {
 		fmt.Fprintln(os.Stderr, "GNOME: 候选窗退化为普通窗，跳过 uiapp（用内置面板）")
@@ -353,11 +416,29 @@ func spawnUI() {
 			cmd.Stdout, cmd.Stderr = nil, nil
 			if err := cmd.Start(); err == nil {
 				fmt.Fprintln(os.Stderr, "spawned uiapp", path)
+				uiappMu.Lock()
+				uiappCmd = cmd
+				uiappMu.Unlock()
 				go func() { _, _ = cmd.Process.Wait() }() // 回收，避免僵尸
 			}
 			return
 		}
 	}
+}
+
+// restartUIApp 外观（方向/字号等）变更后按新配置重建候选窗。
+func restartUIApp() {
+	uiappMu.Lock()
+	cmd := uiappCmd
+	uiappCmd = nil
+	uiappMu.Unlock()
+	if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+	go func() {
+		time.Sleep(300 * time.Millisecond) // 等旧进程退出、socket 订阅清理
+		spawnUI()
+	}()
 }
 
 func main() {
@@ -366,7 +447,8 @@ func main() {
 		log.Fatalf("home: %v", err)
 	}
 	userDir := filepath.Join(home, ".local", "share", "xiaoyu-ime", "rime")
-	if err := ensureUserConfig(userDir); err != nil {
+	cfg := loadConfig()
+	if err := writeUserConfig(userDir, cfg.Appearance.PageSize); err != nil {
 		log.Fatalf("bootstrap user config: %v", err)
 	}
 
@@ -393,7 +475,7 @@ func main() {
 	_ = os.Chmod(path, 0o600)
 	fmt.Fprintln(os.Stderr, "xiaoyu-ime daemon listening on", path)
 
-	eng := &engine{sessions: map[uint32]uint64{}, cursors: map[uint32]cursor{}, subs: map[net.Conn]*json.Encoder{}, cfg: loadConfig()}
+	eng := &engine{sessions: map[uint32]uint64{}, cursors: map[uint32]cursor{}, subs: map[net.Conn]*json.Encoder{}, cfg: cfg, rimeDir: userDir}
 
 	go func() {
 		api, err := rime.Setup("/usr/share/rime-data", userDir, "xiaoyu-ime")

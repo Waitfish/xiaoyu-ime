@@ -42,9 +42,36 @@ type stateMsg struct {
 type imeUI struct {
 	mu     sync.Mutex
 	st     stateMsg
+	ap     appearanceCfg
 	conn   net.Conn
 	connMu sync.Mutex
 	win    *mygo.Window
+}
+
+func (u *imeUI) apSnapshot() appearanceCfg {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.ap
+}
+
+// reloadAppearance 收到 daemon 的 config 广播后重取外观并即时重排候选窗
+// （窗口尺寸每次 show 时按 estimate 重设，无需重启进程）。
+func (u *imeUI) reloadAppearance() {
+	m, err := daemonCall(map[string]any{"op": "get_config"})
+	if err != nil {
+		return
+	}
+	u.mu.Lock()
+	changed := m.Ap != u.ap
+	u.ap = m.Ap
+	u.mu.Unlock()
+	if changed {
+		u.win.Invalidate()
+		st := u.snapshot()
+		if st.Visible {
+			u.apply(st)
+		}
+	}
 }
 
 type state = stateMsg
@@ -80,8 +107,14 @@ func (u *imeUI) readLoop() {
 		sc.Buffer(make([]byte, 64*1024), 1024*1024)
 		for sc.Scan() {
 			var m stateMsg
-			if json.Unmarshal(sc.Bytes(), &m) == nil && m.Type == "state" {
+			if json.Unmarshal(sc.Bytes(), &m) != nil {
+				continue
+			}
+			switch m.Type {
+			case "state":
 				u.apply(m)
+			case "config":
+				u.reloadAppearance()
 			}
 		}
 		u.connMu.Lock()
@@ -115,23 +148,53 @@ func (u *imeUI) apply(m stateMsg) {
 	u.win.Invalidate()
 }
 
-// estimate 估算窗口尺寸：CJK 字形宽≈字号，标签+间距固定。
+// estimate 按外观估算窗口尺寸：CJK 字形宽≈字号。
 func (u *imeUI) estimate(m stateMsg) (int, int) {
-	const font, label, gap, pad = 18, 16, 10, 16
+	ap := u.apSnapshot().normalized()
+	fs := ap.FontSize
+	gap, pad := 10, 20
+	if ap.Style == "scale" {
+		gap = ap.FontSize / 3
+		pad = ap.FontSize
+	}
+	cands := m.Candidates
+	if len(cands) > ap.PageSize {
+		cands = cands[:ap.PageSize]
+	}
+	if ap.Orientation == "vertical" {
+		w := 0
+		for _, c := range cands {
+			cw := fs + len([]rune(c.Text))*fs + 12
+			if c.Comment != "" {
+				cw += len([]rune(c.Comment)) * (fs * 2 / 3)
+			}
+			if cw > w {
+				w = cw
+			}
+		}
+		h := len(cands)*(fs+12) + pad
+		if m.Preedit != "" {
+			h += fs + 8
+		}
+		if w < 80 {
+			w = 80
+		}
+		return w + pad, h
+	}
 	w := pad
 	if m.Preedit != "" {
-		w += len([]rune(m.Preedit))*14 + gap
+		w += len([]rune(m.Preedit))*(fs*4/5) + gap
 	}
 	for _, c := range m.Candidates {
-		w += label + len([]rune(c.Text))*font + gap
+		w += fs + len([]rune(c.Text))*fs + gap
 		if c.Comment != "" {
-			w += len([]rune(c.Comment)) * 12
+			w += len([]rune(c.Comment)) * (fs * 2 / 3)
 		}
 	}
 	if w > 900 {
 		w = 900
 	}
-	return w, 56
+	return w, fs+34
 }
 
 func (u *imeUI) pick(index int) {
@@ -149,42 +212,11 @@ func (u *imeUI) pick(index int) {
 }
 
 func (u *imeUI) view(c *ui.Context) {
-	t := c.Theme()
 	st := u.snapshot()
 	if !st.Visible {
 		return
 	}
-	ui.Row(c).Fill().Gap(6).Padding(8).AlignItems(ui.Center).Children(func() {
-		if st.Preedit != "" {
-			ui.Text(c, st.Preedit).FontSize(14).TextColor(t.TextMuted)
-		}
-		for i, cand := range st.Candidates {
-			i := i
-			cell := ui.Row(c).Gap(3).AlignItems(ui.Center).
-				Padding(4, 8).Radius(6).
-				OnClick(func() { u.pick(i) })
-			if i == st.Highlight {
-				cell = cell.Background(t.Accent)
-			}
-			cell.Children(func() {
-				if i < 9 {
-					n := ui.Textf(c, "%d", i+1).FontSize(12)
-					if i == st.Highlight {
-						n = n.TextColor(t.AccentText)
-					} else {
-						n = n.TextColor(t.TextMuted)
-					}
-				}
-				tx := ui.Text(c, cand.Text).FontSize(18)
-				if i == st.Highlight {
-					tx = tx.TextColor(t.AccentText)
-				}
-				if cand.Comment != "" {
-					ui.Text(c, cand.Comment).FontSize(11).TextColor(t.TextMuted)
-				}
-			})
-		}
-	})
+	candidatesView(c, st, u.apSnapshot(), u.pick)
 }
 
 func main() {
@@ -192,7 +224,10 @@ func main() {
 		runSettings()
 		return
 	}
-	u := &imeUI{}
+	u := &imeUI{ap: defaultAp()}
+	if m, err := daemonCall(map[string]any{"op": "get_config"}); err == nil {
+		u.ap = m.Ap
+	}
 	// MyGo 要求窗口在 App 就绪后创建（NewWindow 早于 WhenReady 会 panic）
 	mygo.App.WhenReady(func() {
 		u.win = mygo.NewWindow(mygo.WindowOptions{

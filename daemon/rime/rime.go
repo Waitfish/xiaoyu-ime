@@ -80,6 +80,15 @@ func Setup(sharedDataDir, userDataDir, appName string) (*Api, error) {
 
 func (a *Api) Finalize() { C.tr_finalize(a.p) }
 
+// StartMaintenance 触发 rime 重新部署（用户配置补丁生效），非阻塞。
+func (a *Api) StartMaintenance(foreground bool) {
+	f := C.Bool(0)
+	if foreground {
+		f = 1
+	}
+	C.tr_start_maintenance(a.p, f)
+}
+
 func (a *Api) CreateSession() uint64 {
 	return uint64(C.tr_create_session(a.p))
 }
