@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=xiaoyu-ime daemon
+Comment=小鱼输入法引擎守护进程（开机预热，避免首键直通英文）
+Exec=/usr/libexec/xiaoyu-ime-daemon
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-Phase=Applications

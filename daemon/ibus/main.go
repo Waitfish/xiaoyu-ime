@@ -132,7 +132,7 @@ func (cl *client) open() error {
 	}
 	// daemon 刚被拉起时 rime 可能未就绪/正在部署，短暂重试
 	var lastErr error
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 24; i++ { // 冷部署最长约 8 秒
 		resp, err := cl.call(map[string]any{"op": "open"})
 		if err == nil && resp.Error == "" {
 			cl.sess = resp.Session
@@ -146,7 +146,7 @@ func (cl *client) open() error {
 		} else {
 			lastErr = errors.New(resp.Error)
 		}
-		time.Sleep(250 * time.Millisecond)
+		time.Sleep(400 * time.Millisecond)
 	}
 	return lastErr
 }
@@ -530,6 +530,10 @@ func main() {
 		log.Fatalf("connect ibus bus: %v", err)
 	}
 	defer conn.Close()
+
+	// 预热：引擎一启动就拉起 daemon（rime 首次部署要数秒，
+	// 不等用户按键才开始，否则头几个键全部直通成英文）。
+	spawnDaemon()
 
 	f := &factory{conn: conn}
 	if err := conn.Export(f, factoryPath, factoryIface); err != nil {

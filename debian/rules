@@ -14,6 +14,7 @@ override_dh_auto_install-arch:
 	install -D daemon/xiaoyu-ime-ibus debian/xiaoyu-ime/usr/libexec/xiaoyu-ime-ibus
 	install -D uiapp/xiaoyu-ime-ui debian/xiaoyu-ime/usr/libexec/xiaoyu-ime-ui
 	install -D data/ibus/xiaoyu.xml debian/xiaoyu-ime/usr/share/ibus/component/xiaoyu.xml
+	install -D data/autostart/xiaoyu-ime-daemon.desktop debian/xiaoyu-ime/etc/xdg/autostart/xiaoyu-ime-daemon.desktop
 
 # dwz 处理不了 Go 的 DWARF
 override_dh_dwz:
