@@ -47,7 +47,7 @@ public:
     void reset(const fcitx::InputMethodEntry &, fcitx::InputContext &ic) override {
         auto it = sessions_.find(ic.uniqueID());
         if (it != sessions_.end() && api_)
-            api_->clear_session(it->second);
+            api_->clear_composition(it->second);
     }
 
     void keyEvent(const fcitx::InputMethodEntry &, fcitx::KeyEvent &keyEvent) override {
