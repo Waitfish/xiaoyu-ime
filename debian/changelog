@@ -1,4 +1,4 @@
-tomato-ime (0.1.0) resolute; urgency=medium
+xiaoyu-ime (0.1.0) resolute; urgency=medium
 
   * M1: fcitx5 engine module with embedded librime (luna_pinyin).
 

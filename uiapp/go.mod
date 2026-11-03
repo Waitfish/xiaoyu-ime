@@ -1,4 +1,4 @@
-module tomato-ime/uiapp
+module xiaoyu-ime/uiapp
 
 go 1.27.3
 

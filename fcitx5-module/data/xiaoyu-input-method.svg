@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 64 64">
+  <!-- 小鱼输入法图标：蓝色小鱼 + 气泡 -->
+  <path d="M14 32 C14 22 24 15 36 15 C48 15 56 22 56 32 C56 42 48 49 36 49 C24 49 14 42 14 32 Z" fill="#2f80ed"/>
+  <path d="M14 32 L4 22 C2 27 2 37 4 42 Z" fill="#1f5fbf"/>
+  <path d="M30 16 C32 10 40 8 44 12 C40 13 35 14 32 17 Z" fill="#1f5fbf"/>
+  <circle cx="46" cy="28" r="4.5" fill="#ffffff"/>
+  <circle cx="47" cy="28" r="2.2" fill="#10233f"/>
+  <path d="M54 36 C52 38 49 39 46 39" stroke="#10233f" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <circle cx="58" cy="12" r="3" fill="#9cc4ff"/>
+  <circle cx="61" cy="6" r="2" fill="#9cc4ff"/>
+</svg>

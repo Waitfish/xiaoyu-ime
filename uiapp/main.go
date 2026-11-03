@@ -1,4 +1,4 @@
-// tomato-ime-ui：MyGo 候选窗（M3）。
+// xiaoyu-ime-ui：MyGo 候选窗（M3）。
 //
 // 订阅守护进程的状态推送，在光标处显示 preedit + 候选；点击候选回 select。
 // X11 / wlroots 系 Wayland（走 gtk-layer-shell）下是原生覆盖窗：置顶、免任务栏、任意定位。
@@ -54,7 +54,7 @@ func socketPath() string {
 	if dir == "" {
 		dir = os.TempDir()
 	}
-	return dir + "/tomato-ime.sock"
+	return dir + "/xiaoyu-ime.sock"
 }
 
 func (u *imeUI) snapshot() stateMsg {
@@ -192,7 +192,7 @@ func main() {
 	// MyGo 要求窗口在 App 就绪后创建（NewWindow 早于 WhenReady 会 panic）
 	mygo.App.WhenReady(func() {
 		u.win = mygo.NewWindow(mygo.WindowOptions{
-			Title:         "番茄候选窗",
+			Title:         "小鱼候选窗",
 			Frameless:     true,
 			AlwaysOnTop:   true,
 			SkipTaskbar:   true,
@@ -207,7 +207,7 @@ func main() {
 	})
 	mygo.App.OnWindowAllClosed(func() { os.Exit(0) })
 	if err := mygo.App.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "tomato-ime-ui:", err)
+		fmt.Fprintln(os.Stderr, "xiaoyu-ime-ui:", err)
 		os.Exit(1)
 	}
 }

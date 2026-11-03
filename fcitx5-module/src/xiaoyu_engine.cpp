@@ -1,7 +1,7 @@
-// 番茄输入法 fcitx5 引擎模块（M2：引擎在 Go 守护进程，本模块只做按键转发与 UI 同步）
+// 小鱼输入法 fcitx5 引擎模块（M2：引擎在 Go 守护进程，本模块只做按键转发与 UI 同步）
 //
 // 架构（docs/architecture.md）：模块加载进 fcitx5 进程，绝不嵌入 Go/librime 运行时；
-// 引擎在 tomato-ime-daemon（unix socket，换行分隔 JSON）。连接失败时自动拉起守护进程。
+// 引擎在 xiaoyu-ime-daemon（unix socket，换行分隔 JSON）。连接失败时自动拉起守护进程。
 //
 // 按 fcitx5 5.1.7 真实头文件编写（要点见 AGENTS.md 铁律）。
 #include <fcitx/addonfactory.h>
@@ -76,7 +76,7 @@ private:
     static std::string socketPath() {
         const char *xdg = getenv("XDG_RUNTIME_DIR");
         std::string dir = xdg && *xdg ? xdg : "/tmp";
-        return dir + "/tomato-ime.sock";
+        return dir + "/xiaoyu-ime.sock";
     }
 
     static int tryConnect() {
@@ -95,8 +95,8 @@ private:
 
     void spawnDaemon() {
         static const char *candidates[] = {
-            "/usr/libexec/tomato-ime-daemon",
-            "/usr/lib/tomato-ime/tomato-ime-daemon",
+            "/usr/libexec/xiaoyu-ime-daemon",
+            "/usr/lib/xiaoyu-ime/xiaoyu-ime-daemon",
         };
         const char *path = nullptr;
         for (const char *c : candidates) {
@@ -161,17 +161,17 @@ private:
     int fd_ = -1;
 };
 
-class TomatoEngine : public fcitx::InputMethodEngineV2 {
+class XiaoyuEngine : public fcitx::InputMethodEngineV2 {
 public:
     // fcitx5 的 IM 条目由引擎自己声明（inputmethod/*.conf 不是条目来源）。
-    // 缺了这个 listInputMethods 返回空 → 条目不存在 → 切不到番茄 → 英文直通。
+    // 缺了这个 listInputMethods 返回空 → 条目不存在 → 切不到小鱼 → 英文直通。
     std::vector<fcitx::InputMethodEntry> listInputMethods() override {
         std::vector<fcitx::InputMethodEntry> entries;
-        entries.emplace_back("tomato", "番茄输入法", "zh_CN", "tomato");
+        entries.emplace_back("xiaoyu", "小鱼输入法", "zh_CN", "xiaoyu");
         auto &entry = entries.back();
-        entry.setNativeName("番茄输入法");
-        entry.setIcon("tomato-input-method");
-        entry.setLabel("番");
+        entry.setNativeName("小鱼输入法");
+        entry.setIcon("xiaoyu-input-method");
+        entry.setLabel("鱼");
         entry.setConfigurable(false);
         return entries;
     }
@@ -319,12 +319,12 @@ private:
     std::map<fcitx::ICUUID, uint32_t> sessions_;
 };
 
-class TomatoModuleFactory : public fcitx::AddonFactory {
+class XiaoyuModuleFactory : public fcitx::AddonFactory {
     fcitx::AddonInstance *create(fcitx::AddonManager *) override {
-        return new TomatoEngine();
+        return new XiaoyuEngine();
     }
 };
 
 } // namespace
 
-FCITX_ADDON_FACTORY(TomatoModuleFactory)
+FCITX_ADDON_FACTORY(XiaoyuModuleFactory)

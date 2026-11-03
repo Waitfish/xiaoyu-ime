@@ -1,13 +1,13 @@
 # 架构（路线 C）
 
-番茄输入法 = **平台薄壳 × N + 引擎守护进程 × 1 + MyGo UI × 1**，与 Weasel（TSF DLL + UI 进程）、Squirrel 同构。
+小鱼输入法 = **平台薄壳 × N + 引擎守护进程 × 1 + MyGo UI × 1**，与 Weasel（TSF DLL + UI 进程）、Squirrel 同构。
 
 ```
 ┌───────────────────────────────────────────────────────┐
 │ 候选窗 / 设置 / 托盘        MyGo（Go，一份代码）        │  ← M3
 ├───────────────────────────────────────────────────────┤
 │ 引擎守护进程               Go + cgo + librime（一份）   │  ← M2
-│   $XDG_RUNTIME_DIR/tomato-ime.sock，换行 JSON          │
+│   $XDG_RUNTIME_DIR/xiaoyu-ime.sock，换行 JSON          │
 ├───────────────────────────────────────────────────────┤
 │ 平台接入层（每平台一个原生薄壳，永久存在）              │
 │   Linux   fcitx5-module/  C++ addon（M1，当前）        │

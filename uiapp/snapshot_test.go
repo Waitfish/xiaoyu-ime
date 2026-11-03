@@ -17,7 +17,7 @@ func TestRenderSnapshot(t *testing.T) {
 		Highlight:  0,
 	}
 	img := ui.Render(u.view, 320, 56, 2)
-	f, err := os.Create("/tmp/tomato-view.png")
+	f, err := os.Create("/tmp/xiaoyu-view.png")
 	if err != nil {
 		t.Fatal(err)
 	}

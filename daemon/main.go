@@ -1,9 +1,9 @@
-// tomato-ime 引擎守护进程（M3）：独占 librime；fcitx5 模块转发按键，
-// MyGo 候选窗（tomato-ime-ui）订阅状态推送。中枢模型：
+// xiaoyu-ime 引擎守护进程（M3）：独占 librime；fcitx5 模块转发按键，
+// MyGo 候选窗（xiaoyu-ime-ui）订阅状态推送。中枢模型：
 //
 //   fcitx5 模块 ──key/ui/select──► daemon ──state 广播──► 候选窗（订阅者）
 //
-// 协议：$XDG_RUNTIME_DIR/tomato-ime.sock 换行分隔 JSON。
+// 协议：$XDG_RUNTIME_DIR/xiaoyu-ime.sock 换行分隔 JSON。
 //   模块请求 {"op":"open|close|reset|key|ui|select",...}
 //   订阅   {"op":"subscribe"} 之后该连接会收到 {"type":"state",...} 推送
 //   ui_connected=true 时模块应跳过 fcitx5 内置面板（由候选窗接管显示）。
@@ -22,7 +22,7 @@ import (
 	"sync"
 	"syscall"
 
-	"tomato-ime/daemon/rime"
+	"xiaoyu-ime/daemon/rime"
 )
 
 type request struct {
@@ -75,7 +75,7 @@ func socketPath() string {
 	if dir == "" {
 		dir = os.TempDir()
 	}
-	return filepath.Join(dir, "tomato-ime.sock")
+	return filepath.Join(dir, "xiaoyu-ime.sock")
 }
 
 // ensureUserConfig 首次运行写入默认简体方案。
@@ -213,7 +213,7 @@ func spawnUI() {
 		fmt.Fprintln(os.Stderr, "GNOME Wayland: 候选窗退化为普通窗，跳过 uiapp（用内置面板）")
 		return
 	}
-	for _, path := range []string{"/usr/libexec/tomato-ime-ui", "/usr/lib/tomato-ime/tomato-ime-ui"} {
+	for _, path := range []string{"/usr/libexec/xiaoyu-ime-ui", "/usr/lib/xiaoyu-ime/xiaoyu-ime-ui"} {
 		if _, err := os.Stat(path); err == nil {
 			cmd := exec.Command(path)
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // 脱离 daemon 进程组
@@ -231,13 +231,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("home: %v", err)
 	}
-	userDir := filepath.Join(home, ".local", "share", "tomato-ime", "rime")
+	userDir := filepath.Join(home, ".local", "share", "xiaoyu-ime", "rime")
 	if err := ensureUserConfig(userDir); err != nil {
 		log.Fatalf("bootstrap user config: %v", err)
 	}
 
 	// 先 listen 再做 rime 初始化：模块 activate 时能连上；
-	// 就绪前 open 返回错误，模块会在下一次按键时懒重试（见 tomato_engine.cpp）。
+	// 就绪前 open 返回错误，模块会在下一次按键时懒重试（见 xiaoyu_engine.cpp）。
 	path := socketPath()
 	// 已有实例在跑则直接退出（模块会连上旧实例）
 	if _, err := os.Stat(path); err == nil {
@@ -254,12 +254,12 @@ func main() {
 	}
 	defer ln.Close()
 	_ = os.Chmod(path, 0o600)
-	fmt.Fprintln(os.Stderr, "tomato-ime daemon listening on", path)
+	fmt.Fprintln(os.Stderr, "xiaoyu-ime daemon listening on", path)
 
 	eng := &engine{sessions: map[uint32]uint32{}, cursors: map[uint32]cursor{}, subs: map[net.Conn]*json.Encoder{}}
 
 	go func() {
-		api, err := rime.Setup("/usr/share/rime-data", userDir, "tomato-ime")
+		api, err := rime.Setup("/usr/share/rime-data", userDir, "xiaoyu-ime")
 		if err != nil {
 			log.Fatalf("rime setup: %v", err)
 		}
