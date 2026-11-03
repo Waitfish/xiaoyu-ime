@@ -1,0 +1,14 @@
+Source: tomato-ime
+Section: utils
+Priority: optional
+Maintainer: Waitfish <daiwj2024@outlook.com>
+Build-Depends: debhelper-compat (= 13), cmake, pkg-config, fcitx5-modules-dev, librime-dev
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+
+Package: tomato-ime-fcitx5
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, rime-data-luna-pinyin, rime-prelude, rime-essay
+Description: 番茄输入法 fcitx5 引擎模块（librime 引擎）
+  番茄输入法的 fcitx5 前端模块，内嵌 librime，默认番茄拼音（luna_pinyin）方案。
+  安装后在 fcitx5 中添加「番茄」输入法即可使用。
