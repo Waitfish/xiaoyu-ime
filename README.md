@@ -6,7 +6,7 @@
 ## Ubuntu 26.04 构建与试用
 
 ```sh
-sudo apt install build-essential cmake pkg-config fcitx5-modules-dev librime-dev librime-data fcitx5
+sudo apt install build-essential cmake pkg-config fcitx5-modules-dev librime-dev rime-data-luna-pinyin rime-prelude rime-essay fcitx5
 ./scripts/build.sh
 ./scripts/install-local.sh   # 装到 ~/.local/share/fcitx5/addon/
 
