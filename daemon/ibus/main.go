@@ -130,15 +130,25 @@ func (cl *client) open() error {
 	if err := cl.ensure(); err != nil {
 		return err
 	}
-	resp, err := cl.call(map[string]any{"op": "open"})
-	if err != nil {
-		return err
+	// daemon 刚被拉起时 rime 可能未就绪/正在部署，短暂重试
+	var lastErr error
+	for i := 0; i < 6; i++ {
+		resp, err := cl.call(map[string]any{"op": "open"})
+		if err == nil && resp.Error == "" {
+			cl.sess = resp.Session
+			return nil
+		}
+		if err != nil {
+			lastErr = err
+			if err := cl.ensure(); err != nil {
+				return err
+			}
+		} else {
+			lastErr = errors.New(resp.Error)
+		}
+		time.Sleep(250 * time.Millisecond)
 	}
-	if resp.Error != "" {
-		return errors.New(resp.Error)
-	}
-	cl.sess = resp.Session
-	return nil
+	return lastErr
 }
 
 // ---------- IBus 序列化（字段顺序 = ibus 1.5.34 serialize 源码） ----------
@@ -312,8 +322,8 @@ func (e *engineObj) update(resp keyResponse) {
 	if pageSize == 0 {
 		pageSize = 5
 	}
-	// MyGo 候选窗在线时（非 GNOME 会话）由它显示候选，IBus 面板不重复显示
-	visible := len(texts) > 0 && !resp.UIConnected
+	// IBus 面板是原生显示路径，始终显示候选（uiapp 只服务 fcitx5 路径）
+	visible := len(texts) > 0
 	e.emit("UpdateLookupTable", lookupTable(pageSize, resp.Highlight, comments, labels), visible)
 }
 
