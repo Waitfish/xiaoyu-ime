@@ -189,20 +189,23 @@ func (u *imeUI) view(c *ui.Context) {
 
 func main() {
 	u := &imeUI{}
-	u.win = mygo.NewWindow(mygo.WindowOptions{
-		Title:        "番茄候选窗",
-		Frameless:    true,
-		AlwaysOnTop:  true,
-		SkipTaskbar:  true,
-		Hidden:       true,
-		DisableMove:  true,
-		DisableResize: true,
-		Width:        300,
-		Height:       56,
-		Content:      ui.View(u.view),
+	// MyGo 要求窗口在 App 就绪后创建（NewWindow 早于 WhenReady 会 panic）
+	mygo.App.WhenReady(func() {
+		u.win = mygo.NewWindow(mygo.WindowOptions{
+			Title:         "番茄候选窗",
+			Frameless:     true,
+			AlwaysOnTop:   true,
+			SkipTaskbar:   true,
+			Hidden:        true,
+			DisableMove:   true,
+			DisableResize: true,
+			Width:         300,
+			Height:        56,
+			Content:       ui.View(u.view),
+		})
+		go u.readLoop()
 	})
 	mygo.App.OnWindowAllClosed(func() { os.Exit(0) })
-	go u.readLoop()
 	if err := mygo.App.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "tomato-ime-ui:", err)
 		os.Exit(1)
