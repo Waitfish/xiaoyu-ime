@@ -582,13 +582,21 @@ func cachedSource() (string, string) {
 	return srcBack, srcID
 }
 
-// currentSource 解析 gsettings input-sources，返回当前激活源 (backend, id)。
+// currentSource 返回当前激活输入源 (backend, id)。
+// GNOME 49+（Ubuntu 26.04）：真值是 mru-sources 的第一个元素；
+// current 只是遗留字段，点击切换时可能不更新——读它会与 shell 互相打架
+// （对账器把引擎按过时值掰回去，指示与实际输出分叉）。
 func currentSource() (string, string) {
+	re := regexp.MustCompile(`\('(xkb|ibus)',\s*'([^']+)'\)`)
+	if out, err := exec.Command("gsettings", "get", "org.gnome.desktop.input-sources", "mru-sources").Output(); err == nil {
+		if all := re.FindAllStringSubmatch(string(out), -1); len(all) > 0 {
+			return all[0][1], all[0][2] // MRU 头 = 当前激活源
+		}
+	}
 	out, err := exec.Command("gsettings", "get", "org.gnome.desktop.input-sources", "sources").Output()
 	if err != nil {
 		return "", ""
 	}
-	re := regexp.MustCompile(`\('(xkb|ibus)',\s*'([^']+)'\)`)
 	all := re.FindAllStringSubmatch(string(out), -1)
 	if len(all) == 0 {
 		return "", ""
