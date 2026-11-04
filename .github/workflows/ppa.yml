@@ -20,8 +20,8 @@ jobs:
           set -ex
           # arm64 交叉编译需要 arm64 版 dev 库；runner 默认只配 amd64 源
           sudo tee /etc/apt/sources.list.d/arm64.list > /dev/null <<'EOF'
-          deb [arch=arm64] http://azure.archive.ubuntu.com/ubuntu/ noble main universe
-          deb [arch=arm64] http://azure.archive.ubuntu.com/ubuntu/ noble-updates main universe
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble main universe
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble-updates main universe
           EOF
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
