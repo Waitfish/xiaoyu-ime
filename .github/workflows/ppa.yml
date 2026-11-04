@@ -80,6 +80,8 @@ jobs:
           LAUNCHPAD_SSH_PRIVATE_KEY: ${{ secrets.LAUNCHPAD_SSH_PRIVATE_KEY }}
         run: |
           set -ex
+          # arm64 multiarch 安装会级联卸掉 dput/python3-paramiko，现场补回
+          sudo apt-get install -y --no-install-recommends dput python3-paramiko
           mkdir -p ~/.ssh
           printf '%s\n' "$LAUNCHPAD_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
