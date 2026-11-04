@@ -153,9 +153,18 @@ func (s *settingsUI) apply() {
 // 立即重新拉起引擎；新引擎启动时自带对账，无需注销/重启系统。
 func (s *settingsUI) restartIME() {
 	s.status = "正在重启…"
-	_, err1 := exec.Command("systemctl", "--user", "restart", "xiaoyu-ime-daemon").CombinedOutput()
+	// 孤儿 daemon（被引擎/模块直接拉起、不在 systemd 管辖）先杀掉，
+	// 否则 systemctl 重启的新实例会因 flock 竞争退出，重启变空操作。
+	// 进程名 17 字符超 pkill -x 上限，用 -f + 字符类防自匹配。
+	_ = exec.Command("pkill", "-f", "[x]iaoyu-ime-daemon").Run()
+	err1 := exec.Command("systemctl", "--user", "restart", "xiaoyu-ime-daemon").Run()
 	_ = exec.Command("pkill", "-x", "xiaoyu-ime-ibus").Run() // 不在跑则非零，忽略
 	time.Sleep(1200 * time.Millisecond)
+	if exec.Command("pgrep", "-x", "fcitx5").Run() == nil {
+		// fcitx5 会话：模块会在下一次按键时自动重连 daemon，无需设 ibus 引擎
+		s.status = "已重启，fcitx5 模块将自动重连，直接打字即可"
+		return
+	}
 	if gnomeSourceIsXiaoyu() {
 		err2 := exec.Command("ibus", "engine", "xiaoyu").Run()
 		if err2 != nil {
