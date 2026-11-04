@@ -262,7 +262,9 @@ func (s *settingsUI) appearanceView(c *ui.Context) {
 	ui.Row(c).Fill().Radius(8).Background(t.Surface).Padding(4).Children(func() {
 		candidatesView(c, pst, prev, nil)
 	})
-	ui.Text(c, "以上为候选窗实际效果预览（候选窗为鼠标点击选择）").FontSize(11).TextColor(t.TextMuted)
+	ui.Text(c, "以上为小鱼候选窗实际效果预览").FontSize(11).TextColor(t.TextMuted)
+	ui.Text(c, "注：GNOME 桌面的候选面板由系统绘制，此处仅「候选个数」对其生效；"+
+		"字体与排列作用于小鱼自有候选窗（Fcitx5/wlroots 桌面生效）。").FontSize(11).TextColor(t.TextMuted)
 
 	ui.Divider(c)
 	ui.Text(c, "候选排列").FontSize(13).TextColor(t.TextMuted)
@@ -285,12 +287,6 @@ func (s *settingsUI) appearanceView(c *ui.Context) {
 		ui.Textf(c, "%d", int(s.ps)).FontSize(12).TextColor(t.TextMuted)
 	})
 
-	ui.Text(c, "候选样式").FontSize(13).TextColor(t.TextMuted)
-	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-		ui.Radio(c, &s.m.Ap.Style, "scroll", "卷轴模式")
-		ui.Radio(c, &s.m.Ap.Style, "single", "单行模式")
-		ui.Radio(c, &s.m.Ap.Style, "scale", "跟随字体缩放")
-	})
 }
 
 func (s *settingsUI) switchRow(c *ui.Context, label string, on *bool, onHint, offHint string) {
