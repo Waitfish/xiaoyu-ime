@@ -263,8 +263,9 @@ func (s *settingsUI) appearanceView(c *ui.Context) {
 		candidatesView(c, pst, prev, nil)
 	})
 	ui.Text(c, "以上为小鱼候选窗实际效果预览").FontSize(11).TextColor(t.TextMuted)
-	ui.Text(c, "注：GNOME 桌面的候选面板由系统绘制，此处仅「候选个数」对其生效；"+
-		"字体与排列作用于小鱼自有候选窗（Fcitx5/wlroots 桌面生效）。").FontSize(11).TextColor(t.TextMuted)
+	ui.Text(c, "注：GNOME（IBus）面板上「候选个数」「候选排列」生效（走 ibus 协议）；"+
+		"字体没有协议通道，IBus 面板字体跟随系统主题——字体设置只作用于"+
+		"小鱼自有候选窗（Fcitx5/wlroots 桌面）和下方预览。").FontSize(11).TextColor(t.TextMuted)
 
 	ui.Divider(c)
 	ui.Text(c, "候选排列").FontSize(13).TextColor(t.TextMuted)
@@ -273,7 +274,7 @@ func (s *settingsUI) appearanceView(c *ui.Context) {
 		ui.Radio(c, &s.m.Ap.Orientation, "vertical", "竖排")
 	})
 
-	ui.Text(c, "候选字体").FontSize(13).TextColor(t.TextMuted)
+	ui.Text(c, "候选字体（IBus/GNOME 面板不可用，字体跟随系统主题）").FontSize(13).TextColor(t.TextMuted)
 	ui.Combobox(c, &s.fontSel, fontOptions())
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, "字号").FontSize(13)
