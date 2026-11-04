@@ -37,6 +37,9 @@ jobs:
           # arm64 交叉编译需要 arm64 版 dev 库；runner 默认只配 amd64 源。
           # librime-dev 声明了跨架构 Conflicts，先卸掉 amd64 版再装 arm64 版。
           sudo dpkg --add-architecture arm64
+          # 主源（archive/security）不托管 arm64，必须显式限定 amd64，
+          # 否则 add-architecture 后 apt update 会去主源拉 arm64 索引 404。
+          sudo sed -i 's/^Types: deb$/Types: deb\nArchitectures: amd64/' /etc/apt/sources.list.d/ubuntu.sources
           sudo tee /etc/apt/sources.list.d/arm64.list > /dev/null <<'EOF'
           deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble main universe
           deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble-updates main universe
