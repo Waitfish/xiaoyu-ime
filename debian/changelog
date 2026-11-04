@@ -1,3 +1,10 @@
+xiaoyu-ime (0.1.1) noble; urgency=medium
+
+  * 构建修复：Build-Depends 增加 librime1t64/libgtk-3-0t64，
+    让 dpkg-shlibdeps 能在构建容器里解析预置二进制的库依赖。
+
+ -- Waitfish <daiwj2024@outlook.com>  Thu, 05 Nov 2026 18:15:00 +0800
+
 xiaoyu-ime (0.1.0) noble; urgency=medium
 
   * M1–M3：librime 引擎守护进程（Go，systemd user 服务）+ IBus 引擎
