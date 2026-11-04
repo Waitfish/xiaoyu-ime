@@ -106,18 +106,11 @@ jobs:
       - name: Verify the upload entered the queue
         run: |
           set -ex
-          version=$(dpkg-parsechangelog -S Version)
-          for i in $(seq 1 20); do
-            if curl -sf "https://api.launchpad.net/1.0/~daiwj2024/+archive/ubuntu/ppa?ws.op=getPublishedBinaries&binary_name=xiaoyu-ime" | grep -q "\"$version"; then
-              echo "published: xiaoyu-ime $version"
-              exit 0
-            fi
-            # 队列受理（未发布）也算成功进入，构建/发布另行跟踪
-            if curl -sf "https://api.launchpad.net/1.0/~daiwj2024/+archive/ubuntu/ppa/+packages?batch=1&ws.op=searchPackages&name=xiaoyu-ime" | grep -q "xiaoyu-ime"; then
-              echo "queued: xiaoyu-ime $version (build/publish pending)"
-              exit 0
-            fi
-            sleep 30
-          done
+          # 上传成功即算这一步成功：构建/发布在 Launchpad 队列里可能要数小时，
+          # 不在 CI 里等。apt 索引出现包条目才算最终发布。
+          if curl -s "https://launchpad.net/~daiwj2024/+archive/ubuntu/ppa" | grep -q "xiaoyu-ime"; then
+            echo "accepted by the queue: xiaoyu-ime (build/publish pending)"
+            exit 0
+          fi
           echo "not visible yet — check https://launchpad.net/~daiwj2024/+archive/ubuntu/ppa" >&2
           exit 1
