@@ -1,0 +1,6 @@
+tar-ignore = ".git"
+tar-ignore = "fcitx5-module/build"
+tar-ignore = "daemon/xiaoyu-ime-daemon"
+tar-ignore = "daemon/xiaoyu-ime-ibus"
+tar-ignore = "uiapp/xiaoyu-ime-ui"
+tar-ignore = "settings-gtk/xiaoyu-ime-settings"

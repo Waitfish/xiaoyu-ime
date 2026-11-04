@@ -1,5 +1,11 @@
-xiaoyu-ime (0.1.0) resolute; urgency=medium
+xiaoyu-ime (0.1.0) noble; urgency=medium
 
-  * M1: fcitx5 engine module with embedded librime (luna_pinyin).
+  * M1–M3：librime 引擎守护进程（Go，systemd user 服务）+ IBus 引擎
+    （GNOME/Ubuntu 原生路径，含输入源一致性对账与直通防线）+ fcitx5 模块。
+  * 输入方案：全拼（luna_pinyin_simp）、双拼-小鹤、五笔；简繁/全半角可配。
+  * MyGo 候选窗与设置应用（输入方案 + 外观：横竖排/字体/个数/实时预览），
+    GTK3 设置应用兜底；设置窗内置"重启输入法"。
+  * 候选个数经 rime menu/page_size 对 IBus 面板生效；横竖排经
+    LookupTable.orientation 对 gnome-shell 面板生效。
 
- -- Waitfish <daiwj2024@outlook.com>  Tue, 03 Nov 2026 12:15:00 +0800
+ -- Waitfish <daiwj2024@outlook.com>  Thu, 05 Nov 2026 15:00:00 +0800

@@ -1,0 +1,114 @@
+name: PPA
+
+on:
+  # 手动触发：把签名源码包上传到 PPA
+  # （https://launchpad.net/~daiwj2024/+archive/ubuntu/ppa）。
+  # 不要用 tag 触发——重复上传同一版本会被队列拒收。
+  workflow_dispatch:
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/go.mod
+
+      - name: Install cross toolchains and dev packages
+        run: |
+          set -ex
+          # arm64 交叉编译需要 arm64 版 dev 库；runner 默认只配 amd64 源
+          sudo tee /etc/apt/sources.list.d/arm64.list > /dev/null <<'EOF'
+          deb [arch=arm64] http://azure.archive.ubuntu.com/ubuntu/ noble main universe
+          deb [arch=arm64] http://azure.archive.ubuntu.com/ubuntu/ noble-updates main universe
+          EOF
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            debhelper dput python3-paramiko cmake pkg-config \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            librime-dev libgtk-3-dev nlohmann-json3-dev fcitx5-modules-dev \
+            librime-dev:arm64 libgtk-3-dev:arm64 fcitx5-modules-dev:arm64
+
+      - name: Cross-compile the binaries the package ships
+        run: |
+          set -ex
+          for ARCH in amd64 arm64; do
+            OUT=build/linux-$ARCH
+            mkdir -p "$OUT"
+            if [ "$ARCH" = arm64 ]; then
+              export GOARCH=arm64
+              export CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++
+              export CGO_CFLAGS="-I/usr/include -I/usr/include/aarch64-linux-gnu"
+              export CGO_LDFLAGS="-L/usr/lib/aarch64-linux-gnu"
+              export PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkg-config
+              CARGCC=aarch64-linux-gnu-gcc
+              CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/cmake/arm64-toolchain.cmake"
+            else
+              export GOARCH=amd64
+              unset CGO_CFLAGS CGO_LDFLAGS PKG_CONFIG_LIBDIR
+              CARGCC=gcc
+              CMAKE_ARGS=""
+            fi
+            (cd daemon && CGO_ENABLED=1 go build -buildvcs=false -o ../$OUT/xiaoyu-ime-daemon .)
+            (cd daemon && CGO_ENABLED=0 go build -buildvcs=false -o ../$OUT/xiaoyu-ime-ibus ./ibus)
+            (cd uiapp && CGO_ENABLED=0 go build -mod=vendor -buildvcs=false -o ../$OUT/xiaoyu-ime-ui .)
+            $CARGCC -O2 -Wall settings-gtk/settings.c -o $OUT/xiaoyu-ime-settings $(pkg-config --cflags --libs gtk+-3.0)
+            cmake -S fcitx5-module -B build-$ARCH -DCMAKE_BUILD_TYPE=Release $CMAKE_ARGS
+            cmake --build build-$ARCH
+            cp build-$ARCH/libxiaoyu-ime.so $OUT/
+            file $OUT/* | grep -v ERROR
+          done
+
+      - name: Build the signed source package
+        env:
+          LAUNCHPAD_GPG_PRIVATE_KEY: ${{ secrets.LAUNCHPAD_GPG_PRIVATE_KEY }}
+        run: |
+          set -ex
+          printf '%s\n' "$LAUNCHPAD_GPG_PRIVATE_KEY" | gpg --batch --import
+          dpkg-buildpackage -S -d -k8A274FB7745E4274CA84D1F9E36EBF9ACA024BA7
+
+      - name: Upload to the Launchpad PPA
+        env:
+          LAUNCHPAD_SSH_PRIVATE_KEY: ${{ secrets.LAUNCHPAD_SSH_PRIVATE_KEY }}
+        run: |
+          set -ex
+          mkdir -p ~/.ssh
+          printf '%s\n' "$LAUNCHPAD_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # Launchpad PPA 上传走 22 端口 SSH/SFTP（2222 只用于 git）。
+          # dput 内置 ppa: 档案用 FTP，2026-06 起故障（bug 2158204），必须 sftp。
+          for i in 1 2 3; do
+            ssh-keyscan -4 -T 10 ppa.launchpad.net >> ~/.ssh/known_hosts && break
+            sleep 5
+          done
+          grep -q "ppa.launchpad.net" ~/.ssh/known_hosts
+          cat > ~/.dput.cf <<'EOF'
+          [lp-sftp]
+          fqdn = ppa.launchpad.net
+          method = sftp
+          incoming = ~daiwj2024/ubuntu/%(lp-sftp)s
+          login = daiwj2024
+          allow_unsigned_uploads = 1
+          EOF
+          version=$(dpkg-parsechangelog -S Version)
+          dput -f lp-sftp:ppa "../xiaoyu-ime_${version}_source.changes"
+
+      - name: Verify the upload entered the queue
+        run: |
+          set -ex
+          version=$(dpkg-parsechangelog -S Version)
+          for i in $(seq 1 20); do
+            if curl -sf "https://api.launchpad.net/1.0/~daiwj2024/+archive/ubuntu/ppa?ws.op=getPublishedBinaries&binary_name=xiaoyu-ime" | grep -q "\"$version"; then
+              echo "published: xiaoyu-ime $version"
+              exit 0
+            fi
+            # 队列受理（未发布）也算成功进入，构建/发布另行跟踪
+            if curl -sf "https://api.launchpad.net/1.0/~daiwj2024/+archive/ubuntu/ppa/+packages?batch=1&ws.op=searchPackages&name=xiaoyu-ime" | grep -q "xiaoyu-ime"; then
+              echo "queued: xiaoyu-ime $version (build/publish pending)"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "not visible yet — check https://launchpad.net/~daiwj2024/+archive/ubuntu/ppa" >&2
+          exit 1
