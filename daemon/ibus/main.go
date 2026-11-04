@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -239,7 +241,7 @@ func lookupTable(pageSize, cursorPos int, cands, labels []string) dbus.Variant {
 	}
 	return dbus.MakeVariant(lookupTableT{
 		"IBusLookupTable", props(),
-		uint32(pageSize), uint32(cursorPos), true, false, int32(0),
+		uint32(pageSize), uint32(cursorPos), true, false, candOrientation.Load(),
 		cv, lv,
 	})
 }
@@ -563,6 +565,41 @@ func flattenStrings(v interface{}) []string {
 	return out
 }
 
+// candOrientation：候选表横竖排（0=横排 1=竖排），来自外观配置。
+// ibus 协议一等公民（IBusLookupTable.orientation），gnome-shell 候选面板
+// 明确消费（ibusCandidatePopup.setOrientation）——GNOME 上"候选排列"由此生效。
+var candOrientation atomic.Int32
+
+// fetchOrientation 从 daemon 读外观里的排列设置（事件驱动调用，非按键路径）。
+func fetchOrientation() {
+	conn, err := net.Dial("unix", daemonSocket())
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+	conn.Write([]byte(`{"op":"get_config"}` + "\n"))
+	sc := bufio.NewScanner(conn)
+	if !sc.Scan() {
+		return
+	}
+	var resp struct {
+		Config *struct {
+			Appearance struct {
+				Orientation string `json:"orientation"`
+			} `json:"appearance"`
+		} `json:"config"`
+	}
+	if json.Unmarshal(sc.Bytes(), &resp) != nil || resp.Config == nil {
+		return
+	}
+	if resp.Config.Appearance.Orientation == "vertical" {
+		candOrientation.Store(1)
+	} else {
+		candOrientation.Store(0)
+	}
+}
+
 // GNOME 当前输入源缓存：对账器每次对账后更新，按键路径只读缓存（不 spawn）。
 var (
 	srcMu   sync.Mutex
@@ -660,6 +697,7 @@ func globalEngineName(ibusConn *dbus.Conn) string {
 func reconcile(sbus, ibusConn *dbus.Conn) {
 	backend, id := currentSource()
 	setCachedSource(backend, id)
+	fetchOrientation() // 外观排列随配置事件同步（GNOME 面板横竖排）
 	if backend == "" {
 		return
 	}
@@ -778,6 +816,7 @@ func main() {
 	call := conn.Object(ibusService, ibusPath).Call(
 		ibusService+".RegisterComponent", 0, component())
 
+	fetchOrientation()
 	go startReconciler(conn)
 	if call.Err != nil {
 		log.Fatalf("RegisterComponent: %v", call.Err)
