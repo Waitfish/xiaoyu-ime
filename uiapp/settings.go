@@ -263,9 +263,10 @@ func (s *settingsUI) appearanceView(c *ui.Context) {
 		candidatesView(c, pst, prev, nil)
 	})
 	ui.Text(c, "以上为小鱼候选窗实际效果预览").FontSize(11).TextColor(t.TextMuted)
-	ui.Text(c, "注：GNOME（IBus）面板上「候选个数」「候选排列」生效（走 ibus 协议）；"+
-		"字体没有协议通道，IBus 面板字体跟随系统主题——字体设置只作用于"+
-		"小鱼自有候选窗（Fcitx5/wlroots 桌面）和下方预览。").FontSize(11).TextColor(t.TextMuted)
+	ui.Text(c, "注：候选个数全局生效。IBus 面板另支持横竖排（协议通道）；"+
+		"字体无协议通道，IBus 面板字体跟随系统主题。fcitx5 面板的字体/横竖排"+
+		"由 fcitx5 自己的外观设置管理。本页字体作用于小鱼自有候选窗"+
+		"（wlroots 桌面）和下方预览。").FontSize(11).TextColor(t.TextMuted)
 
 	ui.Divider(c)
 	ui.Text(c, "候选排列").FontSize(13).TextColor(t.TextMuted)
