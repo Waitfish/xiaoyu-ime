@@ -1,9 +1,15 @@
+xiaoyu-ime (0.1.2) noble; urgency=medium
+
+  * 发布修复：changelog 日期改为真实时间（未来日期会被 Launchpad 队列拒收）。
+
+ -- Waitfish <daiwj2024@outlook.com>  Thu, 05 Nov 2026 07:50:00 +0800
+
 xiaoyu-ime (0.1.1) noble; urgency=medium
 
   * 构建修复：Build-Depends 增加 librime1t64/libgtk-3-0t64，
     让 dpkg-shlibdeps 能在构建容器里解析预置二进制的库依赖。
 
- -- Waitfish <daiwj2024@outlook.com>  Thu, 05 Nov 2026 18:15:00 +0800
+ -- Waitfish <daiwj2024@outlook.com>  Wed, 04 Nov 2026 18:15:00 +0800
 
 xiaoyu-ime (0.1.0) noble; urgency=medium
 
@@ -15,4 +21,4 @@ xiaoyu-ime (0.1.0) noble; urgency=medium
   * 候选个数经 rime menu/page_size 对 IBus 面板生效；横竖排经
     LookupTable.orientation 对 gnome-shell 面板生效。
 
- -- Waitfish <daiwj2024@outlook.com>  Thu, 05 Nov 2026 15:00:00 +0800
+ -- Waitfish <daiwj2024@outlook.com>  Wed, 04 Nov 2026 15:00:00 +0800
