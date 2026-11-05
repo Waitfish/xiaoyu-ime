@@ -1,0 +1,21 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: xiaoyu-ime
+Upstream-Contact: Waitfish <daiwj2024@outlook.com>
+Source: https://github.com/Waitfish/xiaoyu-ime
+
+Files: *
+Copyright: 2026 Waitfish <daiwj2024@outlook.com>
+License: proprietary
+ This software is copyright (c) 2026 Waitfish. All rights reserved.
+ Redistribution and use in source and binary forms, with or without
+ modification, are not permitted without prior written permission,
+ except as required to run the program from this Ubuntu PPA for
+ personal use.
+
+Files: debian/*
+Copyright: 2026 Waitfish <daiwj2024@outlook.com>
+License: proprietary
+ See above.
+
+# 运行时链接的系统库（librime、GTK3、fcitx5、Go 标准库等）
+# 各自保持其原始许可证，随系统发行，不在本源码包内。
